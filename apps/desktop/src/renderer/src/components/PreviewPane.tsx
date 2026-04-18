@@ -1,3 +1,4 @@
+import { useT } from '@open-codesign/i18n';
 import { buildSrcdoc, isIframeErrorMessage, isOverlayMessage } from '@open-codesign/runtime';
 import { useEffect, useRef } from 'react';
 import { EmptyState } from '../preview/EmptyState';
@@ -20,6 +21,7 @@ export function isTrustedPreviewMessageSource(
 }
 
 export function PreviewPane({ onPickStarter }: PreviewPaneProps) {
+  const t = useT();
   const previewHtml = useCodesignStore((s) => s.previewHtml);
   const isGenerating = useCodesignStore((s) => s.isGenerating);
   const errorMessage = useCodesignStore((s) => s.errorMessage);
@@ -74,7 +76,7 @@ export function PreviewPane({ onPickStarter }: PreviewPaneProps) {
       <div className="h-full p-6">
         <div className="relative h-full">
           <div className="absolute left-5 top-5 z-10 rounded-full border border-[var(--color-border)] bg-[rgba(255,255,255,0.88)] px-3 py-1 text-[11px] text-[var(--color-text-secondary)] shadow-[var(--shadow-soft)] backdrop-blur">
-            Click any element in the preview to leave an inline comment.
+            {t('preview.clickToComment')}
           </div>
           <iframe
             ref={iframeRef}

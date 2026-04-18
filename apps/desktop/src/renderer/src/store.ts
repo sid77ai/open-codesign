@@ -1,3 +1,4 @@
+import { i18n } from '@open-codesign/i18n';
 import type {
   ChatMessage,
   LocalInputFile,
@@ -141,6 +142,10 @@ function uniqueFiles(files: LocalInputFile[]): LocalInputFile[] {
   return result;
 }
 
+function tr(key: string, options?: Record<string, unknown>): string {
+  return i18n.t(key, options ?? {}) as string;
+}
+
 export const useCodesignStore = create<CodesignState>((set, get) => ({
   messages: [],
   previewHtml: null,
@@ -176,7 +181,7 @@ export const useCodesignStore = create<CodesignState>((set, get) => ({
     if (!window.codesign) {
       set({
         configLoaded: true,
-        errorMessage: 'Renderer is not connected to the main process.',
+        errorMessage: tr('errors.rendererDisconnected'),
       });
       return;
     }
@@ -215,15 +220,15 @@ export const useCodesignStore = create<CodesignState>((set, get) => ({
       if (next.designSystem) {
         get().pushToast({
           variant: 'success',
-          title: 'Design system linked',
+          title: tr('notifications.designSystemLinked'),
           description: next.designSystem.summary,
         });
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to scan design system.';
+      const message = err instanceof Error ? err.message : tr('errors.generic');
       get().pushToast({
         variant: 'error',
-        title: 'Design system scan failed',
+        title: tr('notifications.designSystemScanFailed'),
         description: message,
       });
     }
@@ -234,12 +239,12 @@ export const useCodesignStore = create<CodesignState>((set, get) => ({
     try {
       const next = await window.codesign.clearDesignSystem();
       set({ config: next });
-      get().pushToast({ variant: 'info', title: 'Design system cleared' });
+      get().pushToast({ variant: 'info', title: tr('notifications.designSystemCleared') });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to clear design system.';
+      const message = err instanceof Error ? err.message : tr('errors.generic');
       get().pushToast({
         variant: 'error',
-        title: 'Unable to clear design system',
+        title: tr('notifications.clearDesignSystemFailed'),
         description: message,
       });
     }
@@ -248,13 +253,13 @@ export const useCodesignStore = create<CodesignState>((set, get) => ({
   async sendPrompt(input) {
     if (get().isGenerating) return;
     if (!window.codesign) {
-      const msg = 'Renderer is not connected to the main process.';
+      const msg = tr('errors.rendererDisconnected');
       set({ errorMessage: msg, lastError: msg });
       return;
     }
     const cfg = get().config;
     if (cfg === null || !cfg.hasKey || cfg.provider === null || cfg.modelPrimary === null) {
-      const msg = 'Onboarding is not complete.';
+      const msg = tr('errors.onboardingIncomplete');
       set({ errorMessage: msg, lastError: msg });
       return;
     }
@@ -291,19 +296,26 @@ export const useCodesignStore = create<CodesignState>((set, get) => ({
       });
       const firstArtifact = result.artifacts[0];
       set((s) => ({
-        messages: [...s.messages, { role: 'assistant', content: result.message || 'Done.' }],
+        messages: [
+          ...s.messages,
+          { role: 'assistant', content: result.message || tr('common.done') },
+        ],
         previewHtml: firstArtifact?.content ?? s.previewHtml,
         isGenerating: false,
       }));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = err instanceof Error ? err.message : tr('errors.unknown');
       set((s) => ({
         messages: [...s.messages, { role: 'assistant', content: `Error: ${msg}` }],
         isGenerating: false,
         errorMessage: msg,
         lastError: msg,
       }));
-      get().pushToast({ variant: 'error', title: 'Generation failed', description: msg });
+      get().pushToast({
+        variant: 'error',
+        title: tr('notifications.generationFailed'),
+        description: msg,
+      });
     }
   },
 
@@ -352,20 +364,27 @@ export const useCodesignStore = create<CodesignState>((set, get) => ({
       });
       const firstArtifact = result.artifacts[0];
       set((s) => ({
-        messages: [...s.messages, { role: 'assistant', content: result.message || 'Applied.' }],
+        messages: [
+          ...s.messages,
+          { role: 'assistant', content: result.message || tr('common.applied') },
+        ],
         previewHtml: firstArtifact?.content ?? s.previewHtml,
         isGenerating: false,
         selectedElement: null,
       }));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = err instanceof Error ? err.message : tr('errors.unknown');
       set((s) => ({
         messages: [...s.messages, { role: 'assistant', content: `Error: ${msg}` }],
         isGenerating: false,
         errorMessage: msg,
         lastError: msg,
       }));
-      get().pushToast({ variant: 'error', title: 'Inline comment failed', description: msg });
+      get().pushToast({
+        variant: 'error',
+        title: tr('notifications.inlineCommentFailed'),
+        description: msg,
+      });
     }
   },
 
@@ -376,11 +395,11 @@ export const useCodesignStore = create<CodesignState>((set, get) => ({
   async exportActive(format: ExportFormat) {
     const html = get().previewHtml;
     if (!html) {
-      set({ toastMessage: 'No design to export yet.' });
+      set({ toastMessage: tr('notifications.noDesignToExport') });
       return;
     }
     if (!window.codesign) {
-      set({ errorMessage: 'Renderer is not connected to the main process.' });
+      set({ errorMessage: tr('errors.rendererDisconnected') });
       return;
     }
     try {
@@ -391,10 +410,10 @@ export const useCodesignStore = create<CodesignState>((set, get) => ({
         defaultFilename: `codesign-${stamp}.${format}`,
       });
       if (res.status === 'saved' && res.path) {
-        set({ toastMessage: `Exported to ${res.path}` });
+        set({ toastMessage: tr('notifications.exportedTo', { path: res.path }) });
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = err instanceof Error ? err.message : tr('errors.unknown');
       set({ toastMessage: msg, errorMessage: msg, lastError: msg });
     }
   },

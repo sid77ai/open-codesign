@@ -13,9 +13,12 @@
     "copy": "复制",
     "copied": "已复制",
     "comingSoon": "即将推出",
-    "loading": "加载中…",
+    "loading": "加载中\u2026",
     "preAlpha": "预览版",
-    "tagline": "自带密钥 · 本地优先 · 多模型"
+    "tagline": "自带密钥 · 本地优先 · 多模型",
+    "done": "完成。",
+    "applied": "已应用。",
+    "working": "处理中"
   },
   "preview": {
     "empty": {
@@ -24,7 +27,7 @@
       "starterChip": "试试这些范例提示词："
     },
     "loading": {
-      "title": "正在生成你的设计…"
+      "title": "正在生成你的设计\u2026"
     },
     "error": {
       "title": "生成失败",
@@ -32,12 +35,30 @@
       "copyError": "复制错误详情"
     },
     "ready": "预览",
-    "noDesign": "还没有设计"
+    "noDesign": "还没有设计",
+    "clickToComment": "点击预览中的任意元素即可留下局部评论。",
+    "runtimeError": "预览运行时错误",
+    "dismissErrors": "关闭预览错误"
   },
   "chat": {
     "placeholder": "想设计什么？",
     "sendShortcut": "发送（回车）",
-    "emptyHint": "可以从范例开始，也可以直接说出你的想法。"
+    "emptyHint": "可以从范例开始，也可以直接说出你的想法。",
+    "sendAction": "发送",
+    "sendAnywhere": "任意位置发送"
+  },
+  "sidebar": {
+    "localContext": "本地上下文",
+    "attachLocalFiles": "添加本地文件",
+    "linkDesignSystemRepo": "关联设计系统仓库",
+    "refreshDesignSystemRepo": "刷新设计系统仓库",
+    "referenceUrl": "参考链接",
+    "attachedFiles": "已附加文件",
+    "removeFile": "移除 {{name}}",
+    "activeDesignSystem": "当前设计系统",
+    "clear": "清除",
+    "designSystemHint": "关联一个仓库，提取颜色、排版、间距等样式线索，用于后续生成。",
+    "startHint": "先写一段简要需求，再补充文件、链接或本地仓库，让生成结果更贴近你的上下文。"
   },
   "settings": {
     "title": "设置",
@@ -68,7 +89,7 @@
     },
     "paste": {
       "title": "粘贴你的 API Key",
-      "placeholder": "sk-…",
+      "placeholder": "sk-\u2026",
       "recognized": "已识别提供商：{{provider}}",
       "connected_one": "已连接 {{count}} 个模型",
       "connected_other": "已连接 {{count}} 个模型",
@@ -93,21 +114,78 @@
     }
   },
   "commands": {
-    "title": "命令",
-    "placeholder": "输入命令或搜索…",
+    "title": "命令面板",
+    "placeholder": "输入命令或搜索\u2026",
+    "noMatches": "没有匹配项。",
+    "openPalette": "打开命令面板",
     "items": {
       "newDesign": "新建设计",
       "toggleTheme": "切换主题",
       "openSettings": "打开设置",
       "export": "导出当前设计"
+    },
+    "hints": {
+      "newDesign": "清空当前会话并重新开始",
+      "toggleTheme": "在浅色和深色之间切换",
+      "openSettings": "模型、外观、存储",
+      "export": "使用顶部工具栏里的导出按钮"
+    },
+    "tooltips": {
+      "commandPalette": "命令面板  Ctrl/Cmd+K",
+      "settings": "设置  Ctrl/Cmd+,"
+    },
+    "cleared": "工作区已清空",
+    "exportUseToolbarTitle": "请使用顶部导出",
+    "exportUseToolbarBody": "请使用顶部工具栏里的“导出”按钮。"
+  },
+  "export": {
+    "button": "导出",
+    "items": {
+      "html": {
+        "label": "HTML",
+        "hint": "导出为单个自包含 .html 文件"
+      },
+      "pdf": {
+        "label": "PDF",
+        "hint": "通过你本机已安装的 Chrome 渲染"
+      },
+      "pptx": {
+        "label": "PPTX",
+        "hint": "可编辑幻灯片；每个 <section> 一页"
+      },
+      "zip": {
+        "label": "ZIP 包",
+        "hint": "index.html + 资源文件 + README.md"
+      }
     }
+  },
+  "notifications": {
+    "designSystemLinked": "设计系统已关联",
+    "designSystemScanFailed": "设计系统扫描失败",
+    "designSystemCleared": "设计系统已清除",
+    "clearDesignSystemFailed": "无法清除设计系统",
+    "generationFailed": "生成失败",
+    "inlineCommentFailed": "局部修改失败",
+    "noDesignToExport": "当前还没有可导出的设计。",
+    "exportedTo": "已导出到 {{path}}"
+  },
+  "inlineComment": {
+    "title": "评论",
+    "closeComposer": "关闭局部评论面板",
+    "description": "被点击的元素会在画布中保持选中。描述你想调整的视觉或内容变化，open-codesign 会围绕该目标重写产物。",
+    "placeholder": "让这个区块更紧凑、标题更有冲击力，并与已关联的设计系统对齐\u2026",
+    "applying": "应用中\u2026",
+    "applyChange": "应用修改"
   },
   "errors": {
     "generic": "出错了。",
     "providerAuthMissing": "还没配置 API Key。打开设置去添加一个。",
     "providerError": "提供商错误：{{message}}",
     "ipcBadInput": "传给主进程的参数不合法。",
-    "exporterNotReady": "导出器还在加载，稍等片刻再试。"
+    "exporterNotReady": "导出器还在加载，稍等片刻再试。",
+    "rendererDisconnected": "渲染进程未连接到主进程。",
+    "onboardingIncomplete": "引导流程尚未完成。",
+    "unknown": "未知错误"
   },
   "demos": {
     "meditationApp": {

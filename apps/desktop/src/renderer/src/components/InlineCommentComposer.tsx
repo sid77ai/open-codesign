@@ -1,3 +1,4 @@
+import { useT } from '@open-codesign/i18n';
 import type { SelectedElement } from '@open-codesign/shared';
 import { MessageSquareText, X } from 'lucide-react';
 import { useState } from 'react';
@@ -16,6 +17,7 @@ interface InlineCommentComposerCardProps {
 }
 
 function InlineCommentComposerCard({ selectedElement }: InlineCommentComposerCardProps) {
+  const t = useT();
   const clearCanvasElement = useCodesignStore((s) => s.clearCanvasElement);
   const applyInlineComment = useCodesignStore((s) => s.applyInlineComment);
   const isGenerating = useCodesignStore((s) => s.isGenerating);
@@ -27,7 +29,7 @@ function InlineCommentComposerCard({ selectedElement }: InlineCommentComposerCar
         <div className="min-w-0">
           <div className="inline-flex items-center gap-2 text-[12px] font-medium text-[var(--color-text-primary)]">
             <MessageSquareText className="h-4 w-4 text-[var(--color-accent)]" />
-            Comment on <code className="text-[11px]">{selectedElement.tag}</code>
+            {t('inlineComment.title')} <code className="text-[11px]">{selectedElement.tag}</code>
           </div>
           <p
             className="mt-1 truncate text-[11px] text-[var(--color-text-muted)]"
@@ -40,7 +42,7 @@ function InlineCommentComposerCard({ selectedElement }: InlineCommentComposerCar
           type="button"
           onClick={clearCanvasElement}
           className="rounded-[var(--radius-md)] p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)]"
-          aria-label="Close inline comment composer"
+          aria-label={t('inlineComment.closeComposer')}
         >
           <X className="h-4 w-4" />
         </button>
@@ -48,13 +50,12 @@ function InlineCommentComposerCard({ selectedElement }: InlineCommentComposerCar
 
       <div className="space-y-3 p-4">
         <p className="text-[12px] leading-[1.5] text-[var(--color-text-secondary)]">
-          Clicked elements stay selected in the canvas. Describe the visual or content change you
-          want, and open-codesign will rewrite the artifact around that target.
+          {t('inlineComment.description')}
         </p>
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Make this section more compact, sharpen the headline, and align it with the linked design system..."
+          placeholder={t('inlineComment.placeholder')}
           rows={4}
           disabled={isGenerating}
           className="w-full resize-none rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-[13px] leading-[1.5] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] transition-[box-shadow,border-color] duration-150 focus:border-[var(--color-accent)] focus:shadow-[0_0_0_3px_var(--color-focus-ring)] focus:outline-none"
@@ -65,7 +66,7 @@ function InlineCommentComposerCard({ selectedElement }: InlineCommentComposerCar
             onClick={clearCanvasElement}
             className="text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             type="button"
@@ -73,7 +74,7 @@ function InlineCommentComposerCard({ selectedElement }: InlineCommentComposerCar
             onClick={() => void applyInlineComment(draft)}
             className="inline-flex items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-accent)] px-3 py-2 text-[12px] font-medium text-white shadow-[var(--shadow-soft)] transition-colors hover:bg-[var(--color-accent-hover)] disabled:pointer-events-none disabled:opacity-40"
           >
-            {isGenerating ? 'Applying...' : 'Apply change'}
+            {isGenerating ? t('inlineComment.applying') : t('inlineComment.applyChange')}
           </button>
         </div>
       </div>

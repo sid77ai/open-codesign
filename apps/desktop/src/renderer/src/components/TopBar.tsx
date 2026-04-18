@@ -18,7 +18,7 @@ export function TopBar() {
   const openCommandPalette = useCodesignStore((s) => s.openCommandPalette);
 
   let crumb = t('preview.noDesign');
-  if (errorMessage) crumb = 'Error';
+  if (errorMessage) crumb = t('preview.error.title');
   else if (isGenerating) crumb = t('preview.loading.title');
   else if (previewHtml) crumb = t('preview.ready');
 
@@ -36,14 +36,14 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-1" style={noDragStyle}>
-        <Tooltip label="Command palette  Ctrl/Cmd+K">
-          <IconButton label="Open command palette" size="sm" onClick={openCommandPalette}>
+        <Tooltip label={t('commands.tooltips.commandPalette')}>
+          <IconButton label={t('commands.openPalette')} size="sm" onClick={openCommandPalette}>
             <Command className="w-4 h-4" />
           </IconButton>
         </Tooltip>
         <LanguageToggle />
         <ThemeToggle />
-        <Tooltip label="Settings  Ctrl/Cmd+,">
+        <Tooltip label={t('commands.tooltips.settings')}>
           <IconButton label={t('commands.items.openSettings')} size="sm" onClick={openSettings}>
             <SettingsIcon className="w-4 h-4" />
           </IconButton>

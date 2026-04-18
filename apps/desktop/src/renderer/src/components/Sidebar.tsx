@@ -1,3 +1,4 @@
+import { useT } from '@open-codesign/i18n';
 import { ArrowUp, FolderOpen, Link2, Paperclip, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { useCodesignStore } from '../store';
@@ -9,6 +10,7 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
+  const t = useT();
   const config = useCodesignStore((s) => s.config);
   const messages = useCodesignStore((s) => s.messages);
   const isGenerating = useCodesignStore((s) => s.isGenerating);
@@ -50,7 +52,7 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
       <div className="px-5 py-5 border-b border-[var(--color-border-muted)] space-y-3">
         <div className="space-y-2">
           <div className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-text-muted)] font-medium">
-            Local Context
+            {t('sidebar.localContext')}
           </div>
           <div className="grid grid-cols-1 gap-2">
             <button
@@ -59,7 +61,7 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
               className="inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-[12px] text-[var(--color-text-primary)] hover:bg-[var(--color-surface-hover)] transition-colors"
             >
               <Paperclip className="w-4 h-4 text-[var(--color-text-secondary)]" />
-              Attach local files
+              {t('sidebar.attachLocalFiles')}
             </button>
             <button
               type="button"
@@ -67,7 +69,9 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
               className="inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-[12px] text-[var(--color-text-primary)] hover:bg-[var(--color-surface-hover)] transition-colors"
             >
               <FolderOpen className="w-4 h-4 text-[var(--color-text-secondary)]" />
-              {designSystem ? 'Refresh design system repo' : 'Link design system repo'}
+              {designSystem
+                ? t('sidebar.refreshDesignSystemRepo')
+                : t('sidebar.linkDesignSystemRepo')}
             </button>
           </div>
         </div>
@@ -75,7 +79,7 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
         <label className="block space-y-2">
           <span className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.08em] text-[var(--color-text-muted)] font-medium">
             <Link2 className="w-3.5 h-3.5" />
-            Reference URL
+            {t('sidebar.referenceUrl')}
           </span>
           <input
             type="url"
@@ -89,7 +93,7 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
         {inputFiles.length > 0 ? (
           <div className="space-y-2">
             <div className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-text-muted)] font-medium">
-              Attached Files
+              {t('sidebar.attachedFiles')}
             </div>
             <div className="flex flex-wrap gap-2">
               {inputFiles.map((file) => (
@@ -104,7 +108,7 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
                     type="button"
                     onClick={() => removeInputFile(file.path)}
                     className="inline-flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-                    aria-label={`Remove ${file.name}`}
+                    aria-label={t('sidebar.removeFile', { name: file.name })}
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -119,7 +123,7 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-[12px] font-medium text-[var(--color-text-primary)]">
-                  Active design system
+                  {t('sidebar.activeDesignSystem')}
                 </div>
                 <div className="text-[11px] text-[var(--color-text-muted)] break-all">
                   {designSystem.rootPath}
@@ -130,7 +134,7 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
                 onClick={() => void clearDesignSystem()}
                 className="text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
               >
-                Clear
+                {t('sidebar.clear')}
               </button>
             </div>
             <p className="text-[12px] text-[var(--color-text-secondary)] leading-[1.5]">
@@ -139,8 +143,7 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
           </div>
         ) : (
           <p className="text-[12px] text-[var(--color-text-muted)] leading-[1.5]">
-            Link a repo to extract colors, typography, spacing, and other styling cues for future
-            generations.
+            {t('sidebar.designSystemHint')}
           </p>
         )}
       </div>
@@ -148,7 +151,7 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
       <div className="flex-1 overflow-y-auto px-5 py-6 space-y-3">
         {messages.length === 0 ? (
           <p className="text-[var(--text-sm)] text-[var(--color-text-muted)] leading-[var(--leading-body)]">
-            Start with a brief, then add files, a URL, or a local repo to ground the result.
+            {t('sidebar.startHint')}
           </p>
         ) : (
           messages.map((m, i) => (
@@ -177,7 +180,7 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
               e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 160)}px`;
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Describe what to design..."
+            placeholder={t('chat.placeholder')}
             disabled={isGenerating}
             rows={1}
             className="flex-1 resize-none bg-transparent px-2 py-1 text-[var(--text-sm)] leading-[1.5] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none min-h-[24px] max-h-[160px]"
@@ -185,7 +188,7 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
           <button
             type="submit"
             disabled={!canSend}
-            aria-label="Send prompt"
+            aria-label={t('common.send')}
             className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-[var(--radius-md)] bg-[var(--color-accent)] text-white shadow-[var(--shadow-soft)] hover:bg-[var(--color-accent-hover)] hover:scale-[1.04] active:scale-[0.96] disabled:opacity-30 disabled:hover:scale-100 disabled:pointer-events-none transition-[transform,background-color,opacity] duration-150 ease-[var(--ease-out)]"
           >
             <ArrowUp className="w-4 h-4" strokeWidth={2.4} />
@@ -199,19 +202,19 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
             >
               Enter
             </kbd>{' '}
-            send ·{' '}
+            {t('chat.sendAction')} /{' '}
             <kbd
               className="px-[5px] py-[1px] rounded-[4px] bg-[var(--color-surface-active)] text-[10px] text-[var(--color-text-secondary)]"
               style={{ fontFamily: 'var(--font-mono)' }}
             >
               Cmd/Ctrl+Enter
             </kbd>{' '}
-            anywhere
+            {t('chat.sendAnywhere')}
           </span>
           {isGenerating ? (
             <span className="inline-flex items-center gap-1.5 text-[var(--color-accent)]">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)] animate-pulse" />
-              Working
+              {t('common.working')}
             </span>
           ) : null}
         </div>

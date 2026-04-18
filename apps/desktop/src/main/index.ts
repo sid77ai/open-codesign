@@ -33,6 +33,7 @@ function createWindow(): void {
     height: 820,
     minWidth: 960,
     minHeight: 640,
+    autoHideMenuBar: process.platform !== 'darwin',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     backgroundColor: BRAND.backgroundColor,
     show: false,
