@@ -15,6 +15,12 @@ import type {
   ChatAppendInput,
   ChatMessageKind,
   ChatMessageRow,
+  CommentCreateInput,
+  CommentKind,
+  CommentRect,
+  CommentRow,
+  CommentStatus,
+  CommentUpdateInput,
   Design,
   DesignMessage,
   DesignSnapshot,
@@ -118,6 +124,24 @@ function applySchema(db: Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_chat_design ON chat_messages(design_id, seq);
+
+    CREATE TABLE IF NOT EXISTS comments (
+      id                     TEXT PRIMARY KEY,
+      schema_version         INTEGER NOT NULL DEFAULT 1,
+      design_id              TEXT NOT NULL REFERENCES designs(id) ON DELETE CASCADE,
+      snapshot_id            TEXT NOT NULL REFERENCES design_snapshots(id) ON DELETE CASCADE,
+      kind                   TEXT NOT NULL CHECK (kind IN ('note','edit')),
+      selector               TEXT NOT NULL,
+      tag                    TEXT NOT NULL,
+      outer_html             TEXT NOT NULL,
+      rect                   TEXT NOT NULL,
+      text                   TEXT NOT NULL,
+      status                 TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','applied','dismissed')),
+      created_at             TEXT NOT NULL,
+      applied_in_snapshot_id TEXT REFERENCES design_snapshots(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_comments_design_snapshot ON comments(design_id, snapshot_id);
+    CREATE INDEX IF NOT EXISTS idx_comments_design_status   ON comments(design_id, status);
   `);
 
   applyAdditiveMigrations(db);
@@ -599,4 +623,150 @@ export function seedChatFromSnapshots(db: Database, designId: string): number {
 
 export function clearChatMessages(db: Database, designId: string): void {
   db.prepare('DELETE FROM chat_messages WHERE design_id = ?').run(designId);
+}
+
+// ---------------------------------------------------------------------------
+// Comments (Workstream D — inline comment mode)
+// ---------------------------------------------------------------------------
+
+interface CommentRowDb {
+  id: string;
+  schema_version: number;
+  design_id: string;
+  snapshot_id: string;
+  kind: string;
+  selector: string;
+  tag: string;
+  outer_html: string;
+  rect: string;
+  text: string;
+  status: string;
+  created_at: string;
+  applied_in_snapshot_id: string | null;
+}
+
+function rowToComment(row: CommentRowDb): CommentRow {
+  let rect: CommentRect = { top: 0, left: 0, width: 0, height: 0 };
+  try {
+    const parsed = JSON.parse(row.rect) as Partial<CommentRect>;
+    rect = {
+      top: typeof parsed.top === 'number' ? parsed.top : 0,
+      left: typeof parsed.left === 'number' ? parsed.left : 0,
+      width: typeof parsed.width === 'number' ? parsed.width : 0,
+      height: typeof parsed.height === 'number' ? parsed.height : 0,
+    };
+  } catch {
+    /* keep zero rect */
+  }
+  return {
+    schemaVersion: 1,
+    id: row.id,
+    designId: row.design_id,
+    snapshotId: row.snapshot_id,
+    kind: row.kind as CommentKind,
+    selector: row.selector,
+    tag: row.tag,
+    outerHTML: row.outer_html,
+    rect,
+    text: row.text,
+    status: row.status as CommentStatus,
+    createdAt: row.created_at,
+    appliedInSnapshotId: row.applied_in_snapshot_id,
+  };
+}
+
+export function createComment(db: Database, input: CommentCreateInput): CommentRow {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO comments
+       (id, schema_version, design_id, snapshot_id, kind, selector, tag, outer_html, rect, text, status, created_at, applied_in_snapshot_id)
+     VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL)`,
+  ).run(
+    id,
+    input.designId,
+    input.snapshotId,
+    input.kind,
+    input.selector,
+    input.tag,
+    input.outerHTML,
+    JSON.stringify(input.rect),
+    input.text,
+    now,
+  );
+  const row = db.prepare('SELECT * FROM comments WHERE id = ?').get(id) as CommentRowDb;
+  return rowToComment(row);
+}
+
+export function listComments(db: Database, designId: string, snapshotId?: string): CommentRow[] {
+  const rows = (
+    snapshotId
+      ? db
+          .prepare(
+            'SELECT * FROM comments WHERE design_id = ? AND snapshot_id = ? ORDER BY created_at ASC',
+          )
+          .all(designId, snapshotId)
+      : db
+          .prepare('SELECT * FROM comments WHERE design_id = ? ORDER BY created_at ASC')
+          .all(designId)
+  ) as CommentRowDb[];
+  return rows.map(rowToComment);
+}
+
+export function listPendingEdits(db: Database, designId: string): CommentRow[] {
+  const rows = db
+    .prepare(
+      "SELECT * FROM comments WHERE design_id = ? AND kind = 'edit' AND status = 'pending' ORDER BY created_at ASC",
+    )
+    .all(designId) as CommentRowDb[];
+  return rows.map(rowToComment);
+}
+
+export function updateComment(
+  db: Database,
+  id: string,
+  patch: CommentUpdateInput,
+): CommentRow | null {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  if (patch.text !== undefined) {
+    fields.push('text = ?');
+    values.push(patch.text);
+  }
+  if (patch.status !== undefined) {
+    fields.push('status = ?');
+    values.push(patch.status);
+  }
+  if (fields.length === 0) {
+    const row = db.prepare('SELECT * FROM comments WHERE id = ?').get(id) as
+      | CommentRowDb
+      | undefined;
+    return row ? rowToComment(row) : null;
+  }
+  values.push(id);
+  const result = db.prepare(`UPDATE comments SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+  if (result.changes === 0) return null;
+  const row = db.prepare('SELECT * FROM comments WHERE id = ?').get(id) as CommentRowDb;
+  return rowToComment(row);
+}
+
+export function deleteComment(db: Database, id: string): boolean {
+  const result = db.prepare('DELETE FROM comments WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+export function markCommentsApplied(db: Database, ids: string[], snapshotId: string): CommentRow[] {
+  if (ids.length === 0) return [];
+  const tx = db.transaction(() => {
+    const stmt = db.prepare(
+      "UPDATE comments SET status = 'applied', applied_in_snapshot_id = ? WHERE id = ?",
+    );
+    for (const id of ids) stmt.run(snapshotId, id);
+  });
+  tx();
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = db
+    .prepare(`SELECT * FROM comments WHERE id IN (${placeholders})`)
+    .all(...ids) as CommentRowDb[];
+  return rows.map(rowToComment);
 }

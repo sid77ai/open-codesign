@@ -436,6 +436,10 @@
     "generationFailed": "生成失败",
     "cancellationFailed": "取消失败",
     "inlineCommentFailed": "局部修改失败",
+    "commentNeedsSnapshot": "请先生成一个设计，再添加批注",
+    "commentCreateFailed": "保存批注失败",
+    "commentUpdateFailed": "更新批注失败",
+    "commentDeleteFailed": "删除批注失败",
     "noDesignToExport": "当前还没有可导出的设计。",
     "exportedTo": "已导出到 {{path}}"
   },
@@ -446,6 +450,31 @@
     "placeholder": "让这个区块更紧凑、标题更有冲击力，并与已关联的设计系统对齐…",
     "applying": "应用中…",
     "applyChange": "应用修改"
+  },
+  "commentBubble": {
+    "title": "批注元素",
+    "close": "关闭批注气泡",
+    "placeholder": "描述想要的改动，或留一条笔记给自己…",
+    "saveNote": "仅标注",
+    "sendToClaude": "交给 Claude",
+    "saving": "保存中…",
+    "sending": "发送中…"
+  },
+  "pinOverlay": {
+    "note": "标注 {{n}}",
+    "edit": "编辑 {{n}}"
+  },
+  "commentChip": {
+    "dismiss": "移除待执行编辑",
+    "empty": "暂无待执行编辑"
+  },
+  "commentsTab": {
+    "empty": "开启批注模式后，点击预览中的任意元素即可留下笔记或编辑指令。",
+    "pendingEdits": "待执行的编辑",
+    "notes": "笔记",
+    "appliedEdits": "已执行的编辑",
+    "delete": "删除批注",
+    "atSnapshot": "@ 版本 {{n}}"
   },
   "disabledReason": {
     "typePromptToSend": "输入提示词以开始",

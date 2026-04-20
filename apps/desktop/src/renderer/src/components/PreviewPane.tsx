@@ -12,9 +12,10 @@ import { ErrorState } from '../preview/ErrorState';
 import { LoadingState } from '../preview/LoadingState';
 import { useCodesignStore } from '../store';
 import { CanvasErrorBar } from './CanvasErrorBar';
-import { InlineCommentComposer } from './InlineCommentComposer';
 import { PhoneFrame } from './PhoneFrame';
 import { PreviewToolbar } from './PreviewToolbar';
+import { CommentBubble } from './comment/CommentBubble';
+import { PinOverlay } from './comment/PinOverlay';
 
 export interface PreviewPaneProps {
   onPickStarter: (prompt: string) => void;
@@ -135,6 +136,12 @@ export function PreviewPane({ onPickStarter }: PreviewPaneProps) {
   const previewViewport = useCodesignStore((s) => s.previewViewport);
   const previewZoom = useCodesignStore((s) => s.previewZoom);
   const interactionMode = useCodesignStore((s) => s.interactionMode);
+  const comments = useCodesignStore((s) => s.comments);
+  const currentSnapshotId = useCodesignStore((s) => s.currentSnapshotId);
+  const commentBubble = useCodesignStore((s) => s.commentBubble);
+  const openCommentBubble = useCodesignStore((s) => s.openCommentBubble);
+  const closeCommentBubble = useCodesignStore((s) => s.closeCommentBubble);
+  const addComment = useCodesignStore((s) => s.addComment);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Memoize the srcdoc string so we only re-run the (regex-heavy) builder when
@@ -152,13 +159,24 @@ export function PreviewPane({ onPickStarter }: PreviewPaneProps) {
       if (!isTrustedPreviewMessageSource(event.source, iframeRef.current?.contentWindow)) return;
 
       const outcome = handlePreviewMessage(event.data, {
-        onElementSelected: (msg) =>
+        onElementSelected: (msg) => {
+          const scaled = scaleRectForZoom(msg.rect, previewZoom);
           selectCanvasElement({
             selector: msg.selector,
             tag: msg.tag,
             outerHTML: msg.outerHTML,
-            rect: scaleRectForZoom(msg.rect, previewZoom),
-          }),
+            rect: scaled,
+          });
+          openCommentBubble({
+            selector: msg.selector,
+            tag: msg.tag,
+            outerHTML: msg.outerHTML,
+            // store raw rect (unscaled) — the bubble is portaled to body and
+            // is anchored by the scaled rect the browser reports via its own
+            // getBoundingClientRect; we pass `scaled` so it lands correctly.
+            rect: scaled,
+          });
+        },
         onIframeError: (msg) =>
           pushIframeError(formatIframeError(msg.kind, msg.message, msg.source, msg.lineno)),
       });
@@ -170,7 +188,7 @@ export function PreviewPane({ onPickStarter }: PreviewPaneProps) {
 
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [pushIframeError, selectCanvasElement, previewZoom]);
+  }, [pushIframeError, selectCanvasElement, openCommentBubble, previewZoom]);
 
   let body: React.ReactNode;
   if (errorMessage) {
@@ -188,6 +206,30 @@ export function PreviewPane({ onPickStarter }: PreviewPaneProps) {
   } else if (previewHtml) {
     const isMobile = previewViewport === 'mobile';
     const showCommentUi = interactionMode === 'comment';
+    const snapshotComments = currentSnapshotId
+      ? comments.filter((c) => c.snapshotId === currentSnapshotId)
+      : [];
+    const pinOverlay = (
+      <PinOverlay
+        comments={snapshotComments}
+        zoom={previewZoom}
+        onPinClick={(c) =>
+          openCommentBubble({
+            selector: c.selector,
+            tag: c.tag,
+            outerHTML: c.outerHTML,
+            rect: {
+              top: c.rect.top * (previewZoom / 100),
+              left: c.rect.left * (previewZoom / 100),
+              width: c.rect.width * (previewZoom / 100),
+              height: c.rect.height * (previewZoom / 100),
+            },
+            existingCommentId: c.id,
+            initialText: c.text,
+          })
+        }
+      />
+    );
     const rawIframe = (
       <iframe
         ref={iframeRef}
@@ -231,7 +273,7 @@ export function PreviewPane({ onPickStarter }: PreviewPaneProps) {
         <div className="min-h-full p-6 flex flex-col items-center justify-center overflow-auto">
           <div className="relative inline-flex">
             <PhoneFrame>{iframe}</PhoneFrame>
-            {showCommentUi && <InlineCommentComposer />}
+            {pinOverlay}
           </div>
         </div>
       );
@@ -250,7 +292,7 @@ export function PreviewPane({ onPickStarter }: PreviewPaneProps) {
               <div className={COMMENT_HINT_CLASS}>{t('preview.commentModeHint')}</div>
             )}
             {iframe}
-            {showCommentUi && <InlineCommentComposer />}
+            {pinOverlay}
           </div>
         </div>
       );
@@ -269,7 +311,7 @@ export function PreviewPane({ onPickStarter }: PreviewPaneProps) {
               <div className={COMMENT_HINT_CLASS}>{t('preview.commentModeHint')}</div>
             )}
             {iframe}
-            {showCommentUi && <InlineCommentComposer />}
+            {pinOverlay}
           </div>
         </div>
       );
@@ -283,6 +325,40 @@ export function PreviewPane({ onPickStarter }: PreviewPaneProps) {
       <PreviewToolbar />
       <CanvasErrorBar />
       <div className="flex-1 overflow-auto">{body}</div>
+      {commentBubble && interactionMode === 'comment' ? (
+        <CommentBubble
+          selector={commentBubble.selector}
+          tag={commentBubble.tag}
+          outerHTML={commentBubble.outerHTML}
+          rect={commentBubble.rect}
+          {...(commentBubble.initialText !== undefined
+            ? { initialText: commentBubble.initialText }
+            : {})}
+          onClose={closeCommentBubble}
+          onSaveNote={async (text) => {
+            await addComment({
+              kind: 'note',
+              selector: commentBubble.selector,
+              tag: commentBubble.tag,
+              outerHTML: commentBubble.outerHTML,
+              rect: commentBubble.rect,
+              text,
+            });
+            closeCommentBubble();
+          }}
+          onSendToClaude={async (text) => {
+            await addComment({
+              kind: 'edit',
+              selector: commentBubble.selector,
+              tag: commentBubble.tag,
+              outerHTML: commentBubble.outerHTML,
+              rect: commentBubble.rect,
+              text,
+            });
+            closeCommentBubble();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

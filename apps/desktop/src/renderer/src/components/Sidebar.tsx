@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { useAgentStream } from '../hooks/useAgentStream';
 import { useCodesignStore } from '../store';
 import { ChatMessageList } from './chat/ChatMessageList';
+import { CommentChipBar } from './chat/CommentChipBar';
 import { CommentsTab } from './chat/CommentsTab';
 import { PromptInput } from './chat/PromptInput';
 import { SkillChipBar } from './chat/SkillChipBar';
@@ -248,6 +249,7 @@ export function Sidebar({ prompt, setPrompt, onSubmit }: SidebarProps) {
 
           {/* Skill chips + prompt input + model/tokens line */}
           <div className="border-t border-[var(--color-border-muted)] p-[var(--space-3)] space-y-[var(--space-2)]">
+            <CommentChipBar />
             <SkillChipBar
               attached={attachedSkills}
               onToggle={toggleAttachedSkill}

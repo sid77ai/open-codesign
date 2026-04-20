@@ -97,6 +97,57 @@ export interface ChatToolCallPayload {
   verbGroup: string;
 }
 
+// ---------------------------------------------------------------------------
+// Comments (Workstream D — inline comment mode)
+// ---------------------------------------------------------------------------
+
+export const CommentKind = z.enum(['note', 'edit']);
+export type CommentKind = z.infer<typeof CommentKind>;
+
+export const CommentStatus = z.enum(['pending', 'applied', 'dismissed']);
+export type CommentStatus = z.infer<typeof CommentStatus>;
+
+export const CommentRect = z.object({
+  top: z.number(),
+  left: z.number(),
+  width: z.number(),
+  height: z.number(),
+});
+export type CommentRect = z.infer<typeof CommentRect>;
+
+export const CommentRowV1 = z.object({
+  schemaVersion: z.literal(1).default(1),
+  id: z.string().min(1),
+  designId: z.string().min(1),
+  snapshotId: z.string().min(1),
+  kind: CommentKind,
+  selector: z.string(),
+  tag: z.string(),
+  outerHTML: z.string(),
+  rect: CommentRect,
+  text: z.string(),
+  status: CommentStatus,
+  createdAt: z.string(),
+  appliedInSnapshotId: z.string().nullable(),
+});
+export type CommentRow = z.infer<typeof CommentRowV1>;
+
+export interface CommentCreateInput {
+  designId: string;
+  snapshotId: string;
+  kind: CommentKind;
+  selector: string;
+  tag: string;
+  outerHTML: string;
+  rect: CommentRect;
+  text: string;
+}
+
+export interface CommentUpdateInput {
+  text?: string;
+  status?: CommentStatus;
+}
+
 export interface SnapshotCreateInput {
   designId: string;
   parentId: string | null;

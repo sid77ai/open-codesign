@@ -437,6 +437,10 @@
     "generationFailed": "Generation failed",
     "cancellationFailed": "Cancellation failed",
     "inlineCommentFailed": "Inline comment failed",
+    "commentNeedsSnapshot": "Generate a design first before leaving a comment",
+    "commentCreateFailed": "Could not save the comment",
+    "commentUpdateFailed": "Could not update the comment",
+    "commentDeleteFailed": "Could not delete the comment",
     "noDesignToExport": "No design to export yet.",
     "exportedTo": "Exported to {{path}}"
   },
@@ -447,6 +451,31 @@
     "placeholder": "Make this section more compact, sharpen the headline, and align it with the linked design system…",
     "applying": "Applying…",
     "applyChange": "Apply change"
+  },
+  "commentBubble": {
+    "title": "Comment on",
+    "close": "Close comment bubble",
+    "placeholder": "Describe the change, or leave a note for yourself…",
+    "saveNote": "Comment",
+    "sendToClaude": "Send to Claude",
+    "saving": "Saving…",
+    "sending": "Sending…"
+  },
+  "pinOverlay": {
+    "note": "Note {{n}}",
+    "edit": "Edit {{n}}"
+  },
+  "commentChip": {
+    "dismiss": "Dismiss pending edit",
+    "empty": "No pending edits"
+  },
+  "commentsTab": {
+    "empty": "Click any element in the preview while comment mode is on to leave a note or an edit instruction.",
+    "pendingEdits": "Pending edits",
+    "notes": "Notes",
+    "appliedEdits": "Applied edits",
+    "delete": "Delete comment",
+    "atSnapshot": "@ snapshot {{n}}"
   },
   "disabledReason": {
     "typePromptToSend": "Type a prompt to start",
