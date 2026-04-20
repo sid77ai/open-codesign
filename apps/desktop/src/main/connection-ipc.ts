@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  BUILTIN_PROVIDERS,
   CodesignError,
   type SupportedOnboardingProvider,
   type WireApi,
@@ -533,7 +534,9 @@ export function registerConnectionIpc(): void {
           hint: 'Complete onboarding first',
         };
       }
-      const entry = cfg.providers[raw];
+      const entry =
+        cfg.providers[raw] ??
+        (isSupportedOnboardingProvider(raw) ? BUILTIN_PROVIDERS[raw] : undefined);
       if (entry === undefined) {
         return {
           ok: false,

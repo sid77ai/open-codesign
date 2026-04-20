@@ -481,7 +481,7 @@ function ActiveModelSelector({
           aria-label={t('settings.providers.editModel')}
           className="inline-flex items-center gap-1 h-6 px-2 rounded-[var(--radius-sm)] bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--text-xs)] font-mono text-[var(--color-text-primary)] hover:bg-[var(--color-surface-hover)] transition-colors"
         >
-          {primary || '(no model)'}
+          {primary || t('settings.providers.noModel')}
           <ChevronDown className="w-3 h-3 text-[var(--color-text-muted)]" />
         </button>
       )}
@@ -654,7 +654,7 @@ function ModelsTab() {
       pushToast({
         variant: 'error',
         title: t('settings.providers.toast.activateFailed'),
-        description: t('settings.providers.toast.missingModel') ?? 'Provider has no default model — edit it first.',
+        description: t('settings.providers.toast.missingModel'),
       });
       return;
     }
