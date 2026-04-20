@@ -184,6 +184,14 @@ interface CodesignState {
    *  already fired. Prevents infinite loops (polish round would otherwise
    *  also end in agent_end and trigger itself). Cleared when a design is
    *  deleted or the app restarts. */
+  /** Feature flag for the auto-polish second-loop injection. When true,
+   *  `tryAutoPolish` fires a canned "deepen this design" follow-up after the
+   *  first successful run of a design. Set to false for now because the
+   *  second round doubles run time and the gain isn't worth the wait while
+   *  context management is still settling. Flip back to true once polish
+   *  runs are faster / cheaper. Can also be toggled at runtime via
+   *  `useCodesignStore.setState({ autoPolishEnabled: true })` from devtools. */
+  autoPolishEnabled: boolean;
   autoPolishFired: Set<string>;
   /** Fire the canned "deepen this design" follow-up prompt once per design,
    *  if the condition is met (first round succeeded, no prior polish). Call
@@ -877,9 +885,11 @@ export const useCodesignStore = create<CodesignState>((set, get) => ({
   config: null,
   configLoaded: false,
   toastMessage: null,
+  autoPolishEnabled: false,
   autoPolishFired: new Set<string>(),
   tryAutoPolish: (designId, locale) => {
     const s = get();
+    if (!s.autoPolishEnabled) return;
     if (s.autoPolishFired.has(designId)) return;
     if (s.isGenerating) return;
     // Require that the design has at least one completed assistant_text row

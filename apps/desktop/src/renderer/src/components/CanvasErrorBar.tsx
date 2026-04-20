@@ -2,6 +2,26 @@ import { useT } from '@open-codesign/i18n';
 import { X } from 'lucide-react';
 import { useCodesignStore } from '../store';
 
+/**
+ * Turn raw iframe errors into user-friendly messages. Babel syntax errors
+ * from broken snapshots surface as "Inline Babel script" — the user can't
+ * do anything about them except regenerate, so say that plainly.
+ */
+function humanizeError(raw: string, t: (k: string, d?: Record<string, unknown>) => string): string {
+  if (/Inline Babel script/i.test(raw) || /Unexpected token/.test(raw)) {
+    return t('preview.error.brokenJsx', {
+      defaultValue:
+        '此设计的代码有语法错误，可能是早期版本保存的不完整内容。重新生成或编辑修复即可。',
+    });
+  }
+  if (/ReferenceError/.test(raw) && /is not defined/.test(raw)) {
+    return t('preview.error.undefinedRef', {
+      defaultValue: '设计引用了未定义的变量或组件。可能是生成中途中断——尝试重新生成。',
+    });
+  }
+  return raw;
+}
+
 export function CanvasErrorBar() {
   const t = useT();
   const errors = useCodesignStore((s) => s.iframeErrors);
@@ -9,6 +29,7 @@ export function CanvasErrorBar() {
   if (errors.length === 0) return null;
   const latest = errors[errors.length - 1];
   if (!latest) return null;
+  const friendly = humanizeError(latest, t);
   return (
     <div
       role="alert"
@@ -21,7 +42,7 @@ export function CanvasErrorBar() {
           {errors.length > 1 ? ` (${errors.length})` : ''}
         </div>
         <div className="text-sm text-[var(--color-text-primary)] truncate" title={latest}>
-          {latest}
+          {friendly}
         </div>
       </div>
       <button

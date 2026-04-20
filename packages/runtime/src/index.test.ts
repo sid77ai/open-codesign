@@ -9,15 +9,15 @@ describe('buildSrcdoc', () => {
     expect(out).not.toContain('Content-Security-Policy');
   });
 
-  it('wraps bare HTML through the JSX path (no legacy HTML branch)', () => {
-    // Under the JSX-only contract, anything without EDITMODE / createRoot
-    // still goes through the React+Babel wrapper. Babel will surface a
-    // syntax error in the iframe overlay if the payload isn't valid JSX,
-    // but the wrapping itself is unconditional.
-    const out = buildSrcdoc('<html><body><p>x</p></body></html>');
-    expect(out).toContain('AGENT_BODY_BEGIN');
-    expect(out).toContain('<script type="text/babel"');
-    expect(out).toContain('<p>x</p>');
+  it('passes legacy full-HTML documents through verbatim (pre-JSX-only snapshots)', () => {
+    // Snapshots written before the JSX-only switchover contain raw HTML
+    // documents. Wrapping those as JSX makes Babel bark on the DOCTYPE /
+    // <html> tokens, so buildSrcdoc short-circuits when it detects a
+    // full HTML document and returns it unchanged.
+    const html = '<html><body><p>x</p></body></html>';
+    expect(buildSrcdoc(html)).toBe(html);
+    const doctyped = '<!DOCTYPE html><html><body><p>y</p></body></html>';
+    expect(buildSrcdoc(doctyped)).toBe(doctyped);
   });
 
   it('wraps a fragment via the JSX path (no legacy HTML branch)', () => {

@@ -184,8 +184,6 @@ export function DesignCardPreview({ design }: DesignCardPreviewProps) {
           title={design.name}
           srcDoc={srcDoc}
           sandbox={isJsx ? 'allow-scripts' : ''}
-          loading="lazy"
-          scrolling="no"
           className="pointer-events-none border-0"
           style={{
             width: '1280px',
