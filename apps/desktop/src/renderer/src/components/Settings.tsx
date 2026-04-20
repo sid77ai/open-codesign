@@ -342,12 +342,6 @@ function ProviderCard({
               {t('settings.providers.setActive')}
             </button>
           )}
-          {row.hasKey === false && !hasError && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-[var(--color-warning,_#d97706)] text-[var(--color-warning,_#d97706)] text-[var(--font-size-badge)] font-medium leading-none">
-              <AlertTriangle className="w-2.5 h-2.5" />
-              {t('settings.providers.missingKey')}
-            </span>
-          )}
           <ProviderOverflowMenu
             isActive={row.isActive}
             hasError={hasError}
@@ -390,15 +384,16 @@ function ActiveModelSelector({
     if (!editing) return;
     if (models !== null) return;
     if (!window.codesign?.models?.listForProvider) return;
+    let cancelled = false;
     setLoadingModels(true);
     void window.codesign.models.listForProvider(provider).then((res) => {
+      if (cancelled) return;
       setLoadingModels(false);
-      if (res.ok) {
-        setModels(res.models);
-      } else {
-        setModels([]);
-      }
+      setModels(res.ok ? res.models : []);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [editing, models, provider]);
 
   const saveSeq = useRef(0);
@@ -461,7 +456,7 @@ function ActiveModelSelector({
           >
             <input
               type="text"
-              defaultValue={primary}
+              value={manualInput}
               onChange={(e) => setManualInput(e.target.value)}
               placeholder="model-name"
               // biome-ignore lint/a11y/noAutofocus: user just clicked to edit
