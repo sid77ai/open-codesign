@@ -8,11 +8,16 @@ import {
   StoredDesignSystem,
   type StoredDesignSystem as StoredDesignSystemValue,
   type SupportedOnboardingProvider,
+  WireApiSchema,
+  type WireApi,
+  detectWireFromBaseUrl,
   hydrateConfig,
   isSupportedOnboardingProvider,
 } from '@open-codesign/shared';
 import { configDir, configPath, readConfig, writeConfig } from './config';
 import { ipcMain, shell } from './electron-runtime';
+import { type ClaudeCodeImport, readClaudeCodeSettings } from './imports/claude-code-config';
+import { type CodexImport, readCodexConfig } from './imports/codex-config';
 import { decryptSecret, encryptSecret } from './keychain';
 import { getLogPath, getLogger } from './logger';
 import {
@@ -388,6 +393,323 @@ async function runResetOnboarding(): Promise<void> {
   cachedConfig = next;
 }
 
+// ── v3 custom provider helpers ────────────────────────────────────────────
+
+interface AddCustomProviderInput {
+  id: string;
+  name: string;
+  wire: WireApi;
+  baseUrl: string;
+  apiKey: string;
+  defaultModel: string;
+  httpHeaders?: Record<string, string>;
+  queryParams?: Record<string, string>;
+  envKey?: string;
+  setAsActive: boolean;
+}
+
+function parseAddProviderPayload(raw: unknown): AddCustomProviderInput {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new CodesignError('config:v1:add-provider expects an object', 'IPC_BAD_INPUT');
+  }
+  const r = raw as Record<string, unknown>;
+  const id = r['id'];
+  const name = r['name'];
+  const wire = r['wire'];
+  const baseUrl = r['baseUrl'];
+  const apiKey = r['apiKey'];
+  const defaultModel = r['defaultModel'];
+  if (typeof id !== 'string' || id.trim().length === 0) {
+    throw new CodesignError('id must be a non-empty string', 'IPC_BAD_INPUT');
+  }
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    throw new CodesignError('name must be a non-empty string', 'IPC_BAD_INPUT');
+  }
+  const parsedWire = WireApiSchema.safeParse(wire);
+  if (!parsedWire.success) {
+    throw new CodesignError(`Unsupported wire: ${String(wire)}`, 'IPC_BAD_INPUT');
+  }
+  if (typeof baseUrl !== 'string' || baseUrl.trim().length === 0) {
+    throw new CodesignError('baseUrl must be a non-empty string', 'IPC_BAD_INPUT');
+  }
+  try {
+    new URL(baseUrl);
+  } catch {
+    throw new CodesignError(`baseUrl "${baseUrl}" is not a valid URL`, 'IPC_BAD_INPUT');
+  }
+  if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+    throw new CodesignError('apiKey must be a non-empty string', 'IPC_BAD_INPUT');
+  }
+  if (typeof defaultModel !== 'string' || defaultModel.trim().length === 0) {
+    throw new CodesignError('defaultModel must be a non-empty string', 'IPC_BAD_INPUT');
+  }
+  const setAsActive = r['setAsActive'];
+  const out: AddCustomProviderInput = {
+    id: id.trim(),
+    name: name.trim(),
+    wire: parsedWire.data,
+    baseUrl: baseUrl.trim(),
+    apiKey: apiKey.trim(),
+    defaultModel: defaultModel.trim(),
+    setAsActive: setAsActive === true,
+  };
+  const headers = r['httpHeaders'];
+  if (headers !== undefined && headers !== null && typeof headers === 'object') {
+    const map: Record<string, string> = {};
+    for (const [k, v] of Object.entries(headers as Record<string, unknown>)) {
+      if (typeof v === 'string') map[k] = v;
+    }
+    if (Object.keys(map).length > 0) out.httpHeaders = map;
+  }
+  const qp = r['queryParams'];
+  if (qp !== undefined && qp !== null && typeof qp === 'object') {
+    const map: Record<string, string> = {};
+    for (const [k, v] of Object.entries(qp as Record<string, unknown>)) {
+      if (typeof v === 'string') map[k] = v;
+    }
+    if (Object.keys(map).length > 0) out.queryParams = map;
+  }
+  if (typeof r['envKey'] === 'string' && (r['envKey'] as string).length > 0) {
+    out.envKey = r['envKey'] as string;
+  }
+  return out;
+}
+
+async function runAddCustomProvider(input: AddCustomProviderInput): Promise<OnboardingState> {
+  const entry: ProviderEntry = {
+    id: input.id,
+    name: input.name,
+    builtin: false,
+    wire: input.wire,
+    baseUrl: input.baseUrl,
+    defaultModel: input.defaultModel,
+    ...(input.httpHeaders !== undefined ? { httpHeaders: input.httpHeaders } : {}),
+    ...(input.queryParams !== undefined ? { queryParams: input.queryParams } : {}),
+    ...(input.envKey !== undefined ? { envKey: input.envKey } : {}),
+  };
+  const ciphertext = encryptSecret(input.apiKey);
+  const nextProviders = { ...(cachedConfig?.providers ?? {}), [entry.id]: entry };
+  const nextSecrets = { ...(cachedConfig?.secrets ?? {}), [entry.id]: { ciphertext } };
+  const shouldActivate = input.setAsActive || cachedConfig === null;
+  const next = hydrateConfig({
+    version: 3,
+    activeProvider: shouldActivate ? entry.id : (cachedConfig?.activeProvider ?? entry.id),
+    activeModel: shouldActivate ? input.defaultModel : (cachedConfig?.activeModel ?? input.defaultModel),
+    secrets: nextSecrets,
+    providers: nextProviders,
+    ...(cachedConfig?.designSystem !== undefined ? { designSystem: cachedConfig.designSystem } : {}),
+  });
+  await writeConfig(next);
+  cachedConfig = next;
+  configLoaded = true;
+  return toState(cachedConfig);
+}
+
+interface UpdateProviderInput {
+  id: string;
+  name?: string;
+  baseUrl?: string;
+  defaultModel?: string;
+  httpHeaders?: Record<string, string>;
+  queryParams?: Record<string, string>;
+  wire?: WireApi;
+}
+
+function parseUpdateProviderPayload(raw: unknown): UpdateProviderInput {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new CodesignError('config:v1:update-provider expects an object', 'IPC_BAD_INPUT');
+  }
+  const r = raw as Record<string, unknown>;
+  const id = r['id'];
+  if (typeof id !== 'string' || id.length === 0) {
+    throw new CodesignError('id must be a non-empty string', 'IPC_BAD_INPUT');
+  }
+  const out: UpdateProviderInput = { id };
+  if (typeof r['name'] === 'string') out.name = r['name'] as string;
+  if (typeof r['baseUrl'] === 'string') out.baseUrl = r['baseUrl'] as string;
+  if (typeof r['defaultModel'] === 'string') out.defaultModel = r['defaultModel'] as string;
+  if (r['httpHeaders'] !== undefined && typeof r['httpHeaders'] === 'object' && r['httpHeaders'] !== null) {
+    const map: Record<string, string> = {};
+    for (const [k, v] of Object.entries(r['httpHeaders'] as Record<string, unknown>)) {
+      if (typeof v === 'string') map[k] = v;
+    }
+    out.httpHeaders = map;
+  }
+  if (r['queryParams'] !== undefined && typeof r['queryParams'] === 'object' && r['queryParams'] !== null) {
+    const map: Record<string, string> = {};
+    for (const [k, v] of Object.entries(r['queryParams'] as Record<string, unknown>)) {
+      if (typeof v === 'string') map[k] = v;
+    }
+    out.queryParams = map;
+  }
+  if (typeof r['wire'] === 'string') {
+    const parsedWire = WireApiSchema.safeParse(r['wire']);
+    if (parsedWire.success) out.wire = parsedWire.data;
+  }
+  return out;
+}
+
+async function runUpdateProvider(input: UpdateProviderInput): Promise<OnboardingState> {
+  const cfg = getCachedConfig();
+  if (cfg === null) {
+    throw new CodesignError('No configuration found', 'CONFIG_MISSING');
+  }
+  const existing = cfg.providers[input.id];
+  if (existing === undefined) {
+    throw new CodesignError(`Provider "${input.id}" not found`, 'IPC_BAD_INPUT');
+  }
+  const updated: ProviderEntry = {
+    ...existing,
+    ...(input.name !== undefined ? { name: input.name } : {}),
+    ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
+    ...(input.defaultModel !== undefined ? { defaultModel: input.defaultModel } : {}),
+    ...(input.httpHeaders !== undefined ? { httpHeaders: input.httpHeaders } : {}),
+    ...(input.queryParams !== undefined ? { queryParams: input.queryParams } : {}),
+    ...(input.wire !== undefined ? { wire: input.wire } : {}),
+  };
+  const next = hydrateConfig({
+    version: 3,
+    activeProvider: cfg.activeProvider,
+    activeModel: cfg.activeModel,
+    secrets: cfg.secrets,
+    providers: { ...cfg.providers, [input.id]: updated },
+    ...(cfg.designSystem !== undefined ? { designSystem: cfg.designSystem } : {}),
+  });
+  await writeConfig(next);
+  cachedConfig = next;
+  return toState(cachedConfig);
+}
+
+interface ExternalConfigsDetection {
+  codex?: CodexImport;
+  claudeCode?: ClaudeCodeImport;
+}
+
+async function runImportCodex(imported: CodexImport): Promise<OnboardingState> {
+  if (imported.providers.length === 0) {
+    throw new CodesignError('Codex config has no providers to import', 'CONFIG_MISSING');
+  }
+  const nextProviders: Record<string, ProviderEntry> = { ...(cachedConfig?.providers ?? {}) };
+  const nextSecrets = { ...(cachedConfig?.secrets ?? {}) };
+  // Seed builtins if we're on a fresh install so the user keeps a fallback.
+  if (cachedConfig === null) {
+    for (const [id, entry] of Object.entries(BUILTIN_PROVIDERS)) {
+      if (nextProviders[id] === undefined) nextProviders[id] = { ...entry };
+    }
+  }
+  for (const entry of imported.providers) {
+    nextProviders[entry.id] = entry;
+    // Pull the key from process.env if env_key is set.
+    if (entry.envKey !== undefined) {
+      const envValue = process.env[entry.envKey];
+      if (envValue !== undefined && envValue.length > 0) {
+        nextSecrets[entry.id] = { ciphertext: encryptSecret(envValue) };
+      }
+    }
+  }
+  const fallbackActive = imported.providers[0];
+  if (fallbackActive === undefined) {
+    throw new CodesignError('Codex config parse produced no providers', 'CONFIG_MISSING');
+  }
+  const activeProvider =
+    imported.activeProvider !== null && nextProviders[imported.activeProvider] !== undefined
+      ? imported.activeProvider
+      : fallbackActive.id;
+  const activeModel =
+    imported.activeModel ?? nextProviders[activeProvider]?.defaultModel ?? '';
+  const next = hydrateConfig({
+    version: 3,
+    activeProvider,
+    activeModel,
+    secrets: nextSecrets,
+    providers: nextProviders,
+    ...(cachedConfig?.designSystem !== undefined ? { designSystem: cachedConfig.designSystem } : {}),
+  });
+  await writeConfig(next);
+  cachedConfig = next;
+  configLoaded = true;
+  return toState(cachedConfig);
+}
+
+async function runImportClaudeCode(imported: ClaudeCodeImport): Promise<OnboardingState> {
+  if (imported.provider === null) {
+    throw new CodesignError('Claude Code import produced no provider', 'CONFIG_MISSING');
+  }
+  const nextProviders: Record<string, ProviderEntry> = { ...(cachedConfig?.providers ?? {}) };
+  const nextSecrets = { ...(cachedConfig?.secrets ?? {}) };
+  if (cachedConfig === null) {
+    for (const [id, entry] of Object.entries(BUILTIN_PROVIDERS)) {
+      if (nextProviders[id] === undefined) nextProviders[id] = { ...entry };
+    }
+  }
+  nextProviders[imported.provider.id] = imported.provider;
+  if (imported.apiKey !== null) {
+    nextSecrets[imported.provider.id] = { ciphertext: encryptSecret(imported.apiKey) };
+  }
+  const next = hydrateConfig({
+    version: 3,
+    activeProvider: imported.provider.id,
+    activeModel: imported.activeModel ?? imported.provider.defaultModel,
+    secrets: nextSecrets,
+    providers: nextProviders,
+    ...(cachedConfig?.designSystem !== undefined ? { designSystem: cachedConfig.designSystem } : {}),
+  });
+  await writeConfig(next);
+  cachedConfig = next;
+  configLoaded = true;
+  return toState(cachedConfig);
+}
+
+interface ListEndpointModelsResponse {
+  ok: boolean;
+  models?: string[];
+  error?: string;
+}
+
+async function runListEndpointModels(raw: unknown): Promise<ListEndpointModelsResponse> {
+  if (typeof raw !== 'object' || raw === null) {
+    return { ok: false, error: 'expected an object payload' };
+  }
+  const r = raw as Record<string, unknown>;
+  const wireRaw = r['wire'];
+  const baseUrl = r['baseUrl'];
+  const apiKey = r['apiKey'];
+  const parsedWire = WireApiSchema.safeParse(wireRaw);
+  if (!parsedWire.success) return { ok: false, error: `unsupported wire: ${String(wireRaw)}` };
+  if (typeof baseUrl !== 'string' || baseUrl.trim().length === 0) {
+    return { ok: false, error: 'baseUrl required' };
+  }
+  if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+    return { ok: false, error: 'apiKey required' };
+  }
+  const cleaned = baseUrl.replace(/\/+$/, '');
+  const url =
+    parsedWire.data === 'anthropic'
+      ? `${cleaned.replace(/\/v1$/, '')}/v1/models`
+      : `${cleaned.endsWith('/v1') ? cleaned : `${cleaned}/v1`}/models`;
+  const headers: Record<string, string> =
+    parsedWire.data === 'anthropic'
+      ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
+      : { authorization: `Bearer ${apiKey}` };
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    const body = (await res.json()) as Record<string, unknown>;
+    const data = body['data'] ?? body['models'];
+    if (!Array.isArray(data)) return { ok: false, error: 'unexpected response shape' };
+    const ids = data
+      .filter((it) => typeof it === 'object' && it !== null && typeof (it as { id?: unknown }).id === 'string')
+      .map((it) => (it as { id: string }).id);
+    return { ok: true, models: ids };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export function registerOnboardingIpc(): void {
   ipcMain.handle('onboarding:get-state', (): OnboardingState => toState(getCachedConfig()));
 
@@ -415,6 +737,74 @@ export function registerOnboardingIpc(): void {
       return runSetProviderAndModels(parseSetProviderAndModels(raw));
     },
   );
+
+  // ── v3 custom provider IPC surface ────────────────────────────────────────
+
+  ipcMain.handle(
+    'config:v1:add-provider',
+    async (_e, raw: unknown): Promise<OnboardingState> => {
+      return runAddCustomProvider(parseAddProviderPayload(raw));
+    },
+  );
+
+  ipcMain.handle(
+    'config:v1:update-provider',
+    async (_e, raw: unknown): Promise<OnboardingState> => {
+      return runUpdateProvider(parseUpdateProviderPayload(raw));
+    },
+  );
+
+  ipcMain.handle(
+    'config:v1:remove-provider',
+    async (_e, raw: unknown): Promise<OnboardingState> => {
+      if (typeof raw !== 'string' || raw.length === 0) {
+        throw new CodesignError('config:v1:remove-provider expects a provider id', 'IPC_BAD_INPUT');
+      }
+      await runDeleteProvider(raw);
+      return toState(cachedConfig);
+    },
+  );
+
+  ipcMain.handle(
+    'config:v1:set-active-provider-and-model',
+    async (_e, raw: unknown): Promise<OnboardingState> => {
+      return runSetActiveProvider(raw);
+    },
+  );
+
+  ipcMain.handle('config:v1:detect-external-configs', async (): Promise<ExternalConfigsDetection> => {
+    const [codex, claudeCode] = await Promise.all([
+      readCodexConfig().catch(() => null),
+      readClaudeCodeSettings().catch(() => null),
+    ]);
+    const out: ExternalConfigsDetection = {};
+    if (codex !== null && codex.providers.length > 0) out.codex = codex;
+    if (claudeCode !== null && claudeCode.provider !== null) out.claudeCode = claudeCode;
+    return out;
+  });
+
+  ipcMain.handle('config:v1:import-codex-config', async (): Promise<OnboardingState> => {
+    const imported = await readCodexConfig();
+    if (imported === null) {
+      throw new CodesignError('No Codex config found at ~/.codex/config.toml', 'CONFIG_MISSING');
+    }
+    return runImportCodex(imported);
+  });
+
+  ipcMain.handle('config:v1:import-claude-code-config', async (): Promise<OnboardingState> => {
+    const imported = await readClaudeCodeSettings();
+    if (imported === null || imported.provider === null) {
+      throw new CodesignError(
+        'No Claude Code settings found at ~/.claude/settings.json',
+        'CONFIG_MISSING',
+      );
+    }
+    return runImportClaudeCode(imported);
+  });
+
+  ipcMain.handle('config:v1:list-endpoint-models', async (_e, raw: unknown) => {
+    return runListEndpointModels(raw);
+  });
 
   // ── Settings v1 channels ────────────────────────────────────────────────────
 

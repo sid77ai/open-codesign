@@ -8,18 +8,21 @@ import type {
   LocalInputFile,
   ModelRef,
   OnboardingState,
+  ProviderEntry,
   SelectedElement,
   SnapshotCreateInput,
   SupportedOnboardingProvider,
+  WireApi,
 } from '@open-codesign/shared';
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   ConnectionTestError,
   ConnectionTestResult,
   ModelsListResponse,
+  TestEndpointResponse,
 } from '../main/connection-ipc';
 
-export type { ConnectionTestError, ConnectionTestResult, ModelsListResponse };
+export type { ConnectionTestError, ConnectionTestResult, ModelsListResponse, TestEndpointResponse };
 
 export interface ValidateKeyResult {
   ok: true;
@@ -39,11 +42,29 @@ export interface ExportInvokeResponse {
 }
 
 export interface ProviderRow {
-  provider: SupportedOnboardingProvider;
+  provider: string;
   maskedKey: string;
   baseUrl: string | null;
   isActive: boolean;
+  label: string;
+  builtin: boolean;
+  wire: WireApi;
   error?: 'decryption_failed' | string;
+}
+
+export interface ExternalConfigsDetection {
+  codex?: {
+    providers: ProviderEntry[];
+    activeProvider: string | null;
+    activeModel: string | null;
+    warnings: string[];
+  };
+  claudeCode?: {
+    provider: ProviderEntry | null;
+    apiKey: string | null;
+    activeModel: string | null;
+    warnings: string[];
+  };
 }
 
 export interface AppPaths {
@@ -154,12 +175,10 @@ const api = {
       modelPrimary: string;
       baseUrl?: string;
     }) => ipcRenderer.invoke('settings:v1:add-provider', input) as Promise<ProviderRow[]>,
-    deleteProvider: (provider: SupportedOnboardingProvider) =>
+    deleteProvider: (provider: string) =>
       ipcRenderer.invoke('settings:v1:delete-provider', provider) as Promise<ProviderRow[]>,
-    setActiveProvider: (input: {
-      provider: SupportedOnboardingProvider;
-      modelPrimary: string;
-    }) => ipcRenderer.invoke('settings:v1:set-active-provider', input) as Promise<OnboardingState>,
+    setActiveProvider: (input: { provider: string; modelPrimary: string }) =>
+      ipcRenderer.invoke('settings:v1:set-active-provider', input) as Promise<OnboardingState>,
     getPaths: () => ipcRenderer.invoke('settings:v1:get-paths') as Promise<AppPaths>,
     openFolder: (path: string) =>
       ipcRenderer.invoke('settings:v1:open-folder', path) as Promise<void>,
@@ -186,6 +205,50 @@ const api = {
         schemaVersion: 1,
         ...input,
       }) as Promise<OnboardingState>,
+    addProvider: (input: {
+      id: string;
+      name: string;
+      wire: WireApi;
+      baseUrl: string;
+      apiKey: string;
+      defaultModel: string;
+      httpHeaders?: Record<string, string>;
+      queryParams?: Record<string, string>;
+      envKey?: string;
+      setAsActive: boolean;
+    }) => ipcRenderer.invoke('config:v1:add-provider', input) as Promise<OnboardingState>,
+    updateProvider: (input: {
+      id: string;
+      name?: string;
+      baseUrl?: string;
+      defaultModel?: string;
+      wire?: WireApi;
+      httpHeaders?: Record<string, string>;
+      queryParams?: Record<string, string>;
+    }) => ipcRenderer.invoke('config:v1:update-provider', input) as Promise<OnboardingState>,
+    removeProvider: (id: string) =>
+      ipcRenderer.invoke('config:v1:remove-provider', id) as Promise<OnboardingState>,
+    setActiveProviderAndModel: (input: { provider: string; modelPrimary: string }) =>
+      ipcRenderer.invoke(
+        'config:v1:set-active-provider-and-model',
+        input,
+      ) as Promise<OnboardingState>,
+    testEndpoint: (input: {
+      wire: WireApi;
+      baseUrl: string;
+      apiKey: string;
+      httpHeaders?: Record<string, string>;
+    }) => ipcRenderer.invoke('config:v1:test-endpoint', input) as Promise<TestEndpointResponse>,
+    listEndpointModels: (input: { wire: WireApi; baseUrl: string; apiKey: string }) =>
+      ipcRenderer.invoke('config:v1:list-endpoint-models', input) as Promise<
+        { ok: true; models: string[] } | { ok: false; error: string }
+      >,
+    detectExternalConfigs: () =>
+      ipcRenderer.invoke('config:v1:detect-external-configs') as Promise<ExternalConfigsDetection>,
+    importCodexConfig: () =>
+      ipcRenderer.invoke('config:v1:import-codex-config') as Promise<OnboardingState>,
+    importClaudeCodeConfig: () =>
+      ipcRenderer.invoke('config:v1:import-claude-code-config') as Promise<OnboardingState>,
   },
   preferences: {
     get: () => ipcRenderer.invoke('preferences:v1:get') as Promise<Preferences>,

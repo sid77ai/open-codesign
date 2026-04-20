@@ -638,13 +638,13 @@ function ProviderCard({
 }: {
   row: ProviderRow;
   config: OnboardingState | null;
-  onDelete: (p: SupportedOnboardingProvider) => void;
-  onActivate: (p: SupportedOnboardingProvider) => void;
+  onDelete: (p: string) => void;
+  onActivate: (p: string) => void;
   onReEnterKey: (p: SupportedOnboardingProvider) => void;
 }) {
   const t = useT();
   const pushToast = useCodesignStore((s) => s.pushToast);
-  const label = SHORTLIST[row.provider]?.label ?? row.provider;
+  const label = row.label ?? SHORTLIST[row.provider as SupportedOnboardingProvider]?.label ?? row.provider;
   const hasError = row.error !== undefined;
 
   const stateClass = hasError
@@ -727,7 +727,7 @@ function ProviderCard({
           {hasError && (
             <button
               type="button"
-              onClick={() => onReEnterKey(row.provider)}
+              onClick={() => onReEnterKey(row.provider as SupportedOnboardingProvider)}
               className="h-7 px-2.5 rounded-[var(--radius-sm)] text-[var(--text-xs)] text-[var(--color-error)] border border-[var(--color-error)] bg-[var(--color-surface)] hover:opacity-80 transition-opacity"
             >
               {t('settings.providers.reEnterKey')}
@@ -737,14 +737,14 @@ function ProviderCard({
             isActive={row.isActive}
             hasError={hasError}
             onTestConnection={handleTestConnection}
-            onReEnterKey={() => onReEnterKey(row.provider)}
+            onReEnterKey={() => onReEnterKey(row.provider as SupportedOnboardingProvider)}
             onDelete={() => onDelete(row.provider)}
             label={label}
           />
         </div>
       </div>
 
-      {row.isActive && !hasError && config !== null && (
+      {row.isActive && !hasError && config !== null && isSupportedOnboardingProvider(row.provider) && (
         <ActiveModelSelector config={config} provider={row.provider} />
       )}
     </div>
@@ -857,7 +857,7 @@ function ModelsTab() {
       .finally(() => setLoading(false));
   }, [pushToast, t]);
 
-  async function handleDelete(provider: SupportedOnboardingProvider) {
+  async function handleDelete(provider: string) {
     if (!window.codesign) return;
     try {
       const next = await window.codesign.settings.deleteProvider(provider);
@@ -874,20 +874,28 @@ function ModelsTab() {
     }
   }
 
-  async function handleActivate(provider: SupportedOnboardingProvider) {
+  async function handleActivate(provider: string) {
     if (!window.codesign) return;
-    const sl = SHORTLIST[provider];
+    const sl = isSupportedOnboardingProvider(provider) ? SHORTLIST[provider] : null;
+    const currentRow = rows.find((r) => r.provider === provider);
+    const defaultModel =
+      sl?.defaultPrimary ??
+      // For custom providers, ProviderRow doesn't carry defaultModel; fall
+      // back to the active config's model so we always send something.
+      config?.modelPrimary ??
+      '';
+    const label = sl?.label ?? currentRow?.label ?? provider;
     try {
       const next = await window.codesign.settings.setActiveProvider({
         provider,
-        modelPrimary: sl.defaultPrimary,
+        modelPrimary: defaultModel,
       });
       setConfig(next);
       const updatedRows = await window.codesign.settings.listProviders();
       setRows(updatedRows);
       pushToast({
         variant: 'success',
-        title: t('settings.providers.toast.switchedTo', { label: sl.label }),
+        title: t('settings.providers.toast.switchedTo', { label }),
       });
     } catch (err) {
       pushToast({
