@@ -439,8 +439,8 @@ function parseAddProviderPayload(raw: unknown): AddCustomProviderInput {
   } catch {
     throw new CodesignError(`baseUrl "${baseUrl}" is not a valid URL`, 'IPC_BAD_INPUT');
   }
-  if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-    throw new CodesignError('apiKey must be a non-empty string', 'IPC_BAD_INPUT');
+  if (typeof apiKey !== 'string') {
+    throw new CodesignError('apiKey must be a string', 'IPC_BAD_INPUT');
   }
   if (typeof defaultModel !== 'string' || defaultModel.trim().length === 0) {
     throw new CodesignError('defaultModel must be a non-empty string', 'IPC_BAD_INPUT');
@@ -613,12 +613,18 @@ async function runImportCodex(imported: CodexImport): Promise<OnboardingState> {
   }
   for (const entry of imported.providers) {
     nextProviders[entry.id] = entry;
-    // Pull the key from process.env if env_key is set.
     if (entry.envKey !== undefined) {
       const envValue = process.env[entry.envKey];
       if (envValue !== undefined && envValue.length > 0) {
         nextSecrets[entry.id] = { ciphertext: encryptSecret(envValue) };
+      } else if (nextSecrets[entry.id] === undefined) {
+        // env var not exported — store empty key so the provider is
+        // usable for keyless endpoints (IP-whitelisted proxies).
+        nextSecrets[entry.id] = { ciphertext: encryptSecret('') };
       }
+    } else if (nextSecrets[entry.id] === undefined) {
+      // No env_key at all — likely a keyless proxy.
+      nextSecrets[entry.id] = { ciphertext: encryptSecret('') };
     }
   }
   const fallbackActive = imported.providers[0];

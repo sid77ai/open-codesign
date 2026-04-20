@@ -313,6 +313,8 @@ const api = {
       apiKey: string;
       baseUrl: string;
     }) => ipcRenderer.invoke('models:v1:list', input) as Promise<ModelsListResponse>,
+    listForProvider: (providerId: string) =>
+      ipcRenderer.invoke('models:v1:list-for-provider', providerId) as Promise<ModelsListResponse>,
   },
   snapshots: {
     listDesigns: () =>

@@ -24,11 +24,11 @@ type TestState =
  */
 export function AddCustomProviderModal({ onSave, onClose, initialSetAsActive = true }: Props) {
   const t = useT();
-  const [name, setName] = useState('DeepSeek');
-  const [baseUrl, setBaseUrl] = useState('https://api.deepseek.com/v1');
+  const [name, setName] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [defaultModel, setDefaultModel] = useState('deepseek-chat');
-  const [wire, setWire] = useState<WireApi>(detectWireFromBaseUrl('https://api.deepseek.com/v1'));
+  const [defaultModel, setDefaultModel] = useState('');
+  const [wire, setWire] = useState<WireApi>('openai-chat');
   const [wireAuto, setWireAuto] = useState(true);
   const [test, setTest] = useState<TestState>({ kind: 'idle' });
   const [saving, setSaving] = useState(false);
@@ -47,7 +47,7 @@ export function AddCustomProviderModal({ onSave, onClose, initialSetAsActive = t
 
   async function handleTest() {
     if (!window.codesign?.config) return;
-    if (baseUrl.trim().length === 0 || apiKey.trim().length === 0) return;
+    if (baseUrl.trim().length === 0) return;
     setTest({ kind: 'testing' });
     try {
       const res = await window.codesign.config.testEndpoint({
@@ -86,7 +86,7 @@ export function AddCustomProviderModal({ onSave, onClose, initialSetAsActive = t
     }
   }
 
-  const canTest = baseUrl.trim().length > 0 && apiKey.trim().length > 0 && test.kind !== 'testing';
+  const canTest = baseUrl.trim().length > 0 && test.kind !== 'testing';
   const canSave = canTest && defaultModel.trim().length > 0 && name.trim().length > 0 && !saving;
 
   return (
@@ -143,14 +143,14 @@ export function AddCustomProviderModal({ onSave, onClose, initialSetAsActive = t
         </Field>
 
         <Field label={t('settings.providers.custom.name')}>
-          <TextInput value={name} onChange={setName} placeholder="DeepSeek" />
+          <TextInput value={name} onChange={setName} placeholder="My Provider" />
         </Field>
 
         <Field label={t('settings.providers.custom.baseUrl')}>
           <TextInput
             value={baseUrl}
             onChange={handleBaseUrlChange}
-            placeholder="https://api.deepseek.com/v1"
+            placeholder="https://api.example.com/v1"
           />
         </Field>
 
@@ -159,7 +159,7 @@ export function AddCustomProviderModal({ onSave, onClose, initialSetAsActive = t
         </Field>
 
         <Field label={t('settings.providers.custom.defaultModel')}>
-          <TextInput value={defaultModel} onChange={setDefaultModel} placeholder="deepseek-chat" />
+          <TextInput value={defaultModel} onChange={setDefaultModel} placeholder="model-name" />
         </Field>
 
         <div className="flex items-center gap-2">

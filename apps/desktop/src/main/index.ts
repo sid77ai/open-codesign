@@ -220,7 +220,12 @@ function registerIpcHandlers(): void {
     // the Settings UI uses for the Active badge — so the actual call cannot
     // diverge from what the user sees.
     const active = resolveActiveModel(cfg, payload.model);
-    const apiKey = getApiKeyForProvider(active.model.provider);
+    let apiKey: string;
+    try {
+      apiKey = getApiKeyForProvider(active.model.provider);
+    } catch {
+      apiKey = '';
+    }
     // Once we've snapped to the canonical active provider, the renderer-supplied
     // baseUrl can no longer be trusted — it may belong to a different (stale)
     // provider and would route the active provider's API key to the wrong host.
@@ -351,7 +356,12 @@ function registerIpcHandlers(): void {
       );
     }
     const active = resolveActiveModel(cfg, payload.model);
-    const apiKey = getApiKeyForProvider(active.model.provider);
+    let apiKey: string;
+    try {
+      apiKey = getApiKeyForProvider(active.model.provider);
+    } catch {
+      apiKey = '';
+    }
     // See codesign:v1:generate above — renderer baseUrl is ignored post-snap.
     const baseUrl = active.baseUrl ?? undefined;
     if (active.overridden) {
@@ -441,7 +451,12 @@ function registerIpcHandlers(): void {
     // active provider so a switch in Settings takes effect immediately.
     const hint = payload.model ?? { provider: cfg.provider, modelId: cfg.modelPrimary };
     const active = resolveActiveModel(cfg, hint);
-    const apiKey = getApiKeyForProvider(active.model.provider);
+    let apiKey: string;
+    try {
+      apiKey = getApiKeyForProvider(active.model.provider);
+    } catch {
+      apiKey = '';
+    }
     const baseUrl = active.baseUrl ?? undefined;
     const promptContext = await preparePromptContext({
       attachments: payload.attachments,

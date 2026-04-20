@@ -1,15 +1,10 @@
-import { setLocale as applyLocale, i18n, useT } from '@open-codesign/i18n';
-import type {
-  ErrorCode,
-  OnboardingState,
-  PROVIDER_SHORTLIST,
-  SupportedOnboardingProvider,
-} from '@open-codesign/shared';
+import { setLocale as applyLocale, useT } from '@open-codesign/i18n';
+import type { OnboardingState } from '@open-codesign/shared';
 import {
   PROVIDER_SHORTLIST as SHORTLIST,
   isSupportedOnboardingProvider,
 } from '@open-codesign/shared';
-import { Button, Tooltip } from '@open-codesign/ui';
+import { Button } from '@open-codesign/ui';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -18,7 +13,6 @@ import {
   Cpu,
   FolderOpen,
   Globe,
-  KeyRound,
   Loader2,
   MoreHorizontal,
   Palette,
@@ -26,13 +20,11 @@ import {
   RotateCcw,
   Sliders,
   Trash2,
-  X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { AppPaths, Preferences, ProviderRow } from '../../../preload/index';
 import { useCodesignStore } from '../store';
 import { AddCustomProviderModal } from './AddCustomProviderModal';
-import { ConnectionDiagnosticPanel } from './ConnectionDiagnosticPanel';
 
 type Tab = 'models' | 'appearance' | 'storage' | 'advanced';
 
@@ -147,380 +139,18 @@ function NativeSelect({
   );
 }
 
-function TextInput({
-  value,
-  onChange,
-  placeholder,
-  type,
-  className,
-  disabled,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  type?: string;
-  className?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <input
-      type={type ?? 'text'}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      disabled={disabled}
-      className={`h-8 px-3 rounded-[var(--radius-md)] bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--text-sm)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] disabled:opacity-50 disabled:cursor-not-allowed ${className ?? ''}`}
-    />
-  );
-}
-
 // ─── Models tab ──────────────────────────────────────────────────────────────
-
-interface AddProviderFormState {
-  provider: SupportedOnboardingProvider;
-  apiKey: string;
-  baseUrl: string;
-  modelPrimary: string;
-  validating: boolean;
-  error: string | null;
-  errorCode: ErrorCode | null;
-  validated: boolean;
-}
-
-function makeDefaultForm(provider: SupportedOnboardingProvider): AddProviderFormState {
-  const sl = SHORTLIST[provider];
-  return {
-    provider,
-    apiKey: '',
-    baseUrl: '',
-    modelPrimary: sl.defaultPrimary,
-    validating: false,
-    error: null,
-    errorCode: null,
-    validated: false,
-  };
-}
-
-export function canSaveProvider(
-  form: Pick<AddProviderFormState, 'apiKey' | 'validated' | 'validating'>,
-): boolean {
-  return form.apiKey.trim().length > 0 && form.validated && !form.validating;
-}
-
-interface ValidateSnapshot {
-  provider: SupportedOnboardingProvider;
-  apiKey: string;
-  baseUrl: string;
-}
-
-/**
- * Pure reducer used by handleValidate — applies the validation result only when
- * the current form still matches the snapshot taken before the async call.
- * Exported for unit testing without a DOM.
- */
-export function applyValidateResult(
-  current: AddProviderFormState,
-  snapshot: ValidateSnapshot,
-  ok: boolean,
-  message: string | undefined,
-  errorCode?: ErrorCode,
-): AddProviderFormState {
-  if (
-    current.provider !== snapshot.provider ||
-    current.apiKey.trim() !== snapshot.apiKey ||
-    current.baseUrl.trim() !== snapshot.baseUrl
-  ) {
-    // Form changed while we were waiting — discard the stale result.
-    return current;
-  }
-  if (ok) {
-    return { ...current, validating: false, validated: true, error: null, errorCode: null };
-  }
-  return {
-    ...current,
-    validating: false,
-    error: message ?? 'Validation failed',
-    errorCode: errorCode ?? null,
-  };
-}
-
-function AddProviderModal({
-  onSave,
-  onClose,
-}: {
-  onSave: (rows: ProviderRow[]) => void;
-  onClose: () => void;
-}) {
-  const t = useT();
-  const providerOptions: { value: SupportedOnboardingProvider; label: string }[] = [
-    { value: 'anthropic', label: 'Anthropic Claude' },
-    { value: 'openai', label: 'OpenAI' },
-    { value: 'openrouter', label: 'OpenRouter' },
-  ];
-
-  const [form, setForm] = useState<AddProviderFormState>(makeDefaultForm('anthropic'));
-  const [logsFolder, setLogsFolder] = useState<string | undefined>(undefined);
-  const pushToast = useCodesignStore((s) => s.pushToast);
-
-  useEffect(() => {
-    if (!window.codesign) return;
-    void window.codesign.settings
-      .getPaths()
-      .then((p) => setLogsFolder(p.logsFolder))
-      .catch((err: unknown) => {
-        pushToast({
-          variant: 'error',
-          title: i18n.t('settings.storage.pathsLoadFailed') as string,
-          description: err instanceof Error ? err.message : String(err),
-        });
-      });
-  }, [pushToast]);
-
-  function setField<K extends keyof AddProviderFormState>(k: K, v: AddProviderFormState[K]) {
-    setForm((prev) => ({ ...prev, [k]: v, error: null, errorCode: null, validated: false }));
-  }
-
-  function handleProviderChange(p: string) {
-    if (!isSupportedOnboardingProvider(p)) return;
-    setForm(makeDefaultForm(p));
-  }
-
-  async function handleValidate() {
-    if (!window.codesign) return;
-    const snapshot = {
-      provider: form.provider,
-      apiKey: form.apiKey.trim(),
-      baseUrl: form.baseUrl.trim(),
-    };
-    setForm((prev) => ({
-      ...prev,
-      validating: true,
-      error: null,
-      errorCode: null,
-      validated: false,
-    }));
-    try {
-      const res = await window.codesign.settings.validateKey({
-        provider: snapshot.provider,
-        apiKey: snapshot.apiKey,
-        ...(snapshot.baseUrl.length > 0 ? { baseUrl: snapshot.baseUrl } : {}),
-      });
-      setForm((current) =>
-        applyValidateResult(
-          current,
-          snapshot,
-          res.ok,
-          res.ok ? undefined : res.message,
-          res.ok ? undefined : res.code,
-        ),
-      );
-    } finally {
-      setForm((current) => (current.validating ? { ...current, validating: false } : current));
-    }
-  }
-
-  async function handleSave() {
-    if (!window.codesign) return;
-    try {
-      const trimmedUrl = form.baseUrl.trim();
-      // Mirror the legacy add-provider semantics: only flip the active
-      // provider when nothing is configured yet. Adding a backup provider
-      // from Settings should NOT route subsequent generations away from the
-      // user's current choice.
-      const current = await window.codesign.onboarding.getState();
-      const setAsActive = !current.hasKey;
-      await window.codesign.config.setProviderAndModels({
-        provider: form.provider,
-        apiKey: form.apiKey.trim(),
-        modelPrimary: form.modelPrimary,
-        ...(trimmedUrl.length > 0 ? { baseUrl: trimmedUrl } : {}),
-        setAsActive,
-      });
-      const rows = await window.codesign.settings.listProviders();
-      onSave(rows);
-    } catch (err) {
-      setForm((prev) => ({
-        ...prev,
-        error: err instanceof Error ? err.message : t('settings.common.unknownError'),
-      }));
-    }
-  }
-
-  const sl = SHORTLIST[form.provider];
-  const primaryOptions = sl.primary.map((m) => ({ value: m, label: m }));
-  const canSave = canSaveProvider(form);
-
-  return (
-    <div
-      // biome-ignore lint/a11y/useSemanticElements: native <dialog> top-layer rendering interferes with our overlay stack
-      role="dialog"
-      aria-modal="true"
-      aria-label={t('settings.providers.modal.title')}
-      className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-[var(--color-overlay)]"
-      onClick={onClose}
-      onKeyDown={(e) => e.key === 'Escape' && onClose()}
-    >
-      <div
-        className="w-full max-w-md bg-[var(--color-background)] border border-[var(--color-border)] rounded-[var(--radius-xl)] shadow-[var(--shadow-elevated)] p-6 space-y-4"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-        role="document"
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-[var(--text-base)] font-semibold text-[var(--color-text-primary)]">
-            {t('settings.providers.modal.title')}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-[var(--radius-md)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
-            aria-label={t('common.close')}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          <div>
-            <p className="block text-[var(--text-xs)] font-medium text-[var(--color-text-secondary)] mb-1.5">
-              {t('settings.providers.modal.provider')}
-            </p>
-            <NativeSelect
-              value={form.provider}
-              onChange={handleProviderChange}
-              options={providerOptions}
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <p className="text-[var(--text-xs)] font-medium text-[var(--color-text-secondary)]">
-                {t('settings.providers.modal.apiKey')}
-              </p>
-              <a
-                href={sl.keyHelpUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[var(--text-xs)] text-[var(--color-accent)] hover:underline"
-              >
-                {t('settings.providers.modal.getKey')}
-              </a>
-            </div>
-            <div className="flex gap-2">
-              <TextInput
-                type="password"
-                value={form.apiKey}
-                onChange={(v) => setField('apiKey', v)}
-                placeholder={t('settings.providers.modal.apiKeyPlaceholder')}
-                className="flex-1"
-              />
-              <Tooltip
-                label={
-                  form.apiKey.trim().length === 0 || form.validating
-                    ? t('disabledReason.enterApiKeyToValidate')
-                    : undefined
-                }
-                side="top"
-              >
-                <button
-                  type="button"
-                  onClick={handleValidate}
-                  disabled={form.apiKey.trim().length === 0 || form.validating}
-                  className="h-8 px-3 rounded-[var(--radius-md)] bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--text-xs)] font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
-                >
-                  {form.validating ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : form.validated ? (
-                    <CheckCircle className="w-3.5 h-3.5 text-[var(--color-success)]" />
-                  ) : null}
-                  {form.validating
-                    ? t('settings.providers.modal.validating')
-                    : form.validated
-                      ? t('settings.providers.modal.valid')
-                      : t('settings.providers.modal.validate')}
-                </button>
-              </Tooltip>
-            </div>
-            {form.error && form.errorCode !== null ? (
-              <div className="mt-2">
-                <ConnectionDiagnosticPanel
-                  errorCode={form.errorCode}
-                  httpStatus={form.error}
-                  baseUrl={form.baseUrl}
-                  provider={form.provider}
-                  {...(logsFolder !== undefined ? { logsPath: logsFolder } : {})}
-                  onApplyFix={(newUrl) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      baseUrl: newUrl,
-                      error: null,
-                      errorCode: null,
-                      validated: false,
-                    }))
-                  }
-                  onTestAgain={() => void handleValidate()}
-                  onDismiss={() => setForm((prev) => ({ ...prev, error: null, errorCode: null }))}
-                />
-              </div>
-            ) : form.error !== null ? (
-              <p className="mt-1.5 text-[var(--text-xs)] text-[var(--color-error)]">{form.error}</p>
-            ) : null}
-          </div>
-
-          <div>
-            <p className="block text-[var(--text-xs)] font-medium text-[var(--color-text-secondary)] mb-1.5">
-              {t('settings.providers.modal.baseUrl')}{' '}
-              <span className="text-[var(--color-text-muted)] font-normal">
-                {t('settings.providers.modal.baseUrlOptional')}
-              </span>
-            </p>
-            <TextInput
-              value={form.baseUrl}
-              onChange={(v) => setField('baseUrl', v)}
-              placeholder={t('settings.providers.modal.baseUrlPlaceholder')}
-              className="w-full"
-            />
-          </div>
-
-          <div>
-            <p className="block text-[var(--text-xs)] font-medium text-[var(--color-text-secondary)] mb-1.5">
-              {t('settings.providers.modal.primaryModel')}
-            </p>
-            <NativeSelect
-              value={form.modelPrimary}
-              onChange={(v) => setField('modelPrimary', v)}
-              options={primaryOptions}
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="secondary" size="sm" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Tooltip label={!canSave ? t('disabledReason.validateKeyFirst') : undefined} side="top">
-            <Button size="sm" onClick={handleSave} disabled={!canSave}>
-              {t('settings.providers.modal.save')}
-            </Button>
-          </Tooltip>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function ProviderOverflowMenu({
   isActive,
   hasError,
   onTestConnection,
-  onReEnterKey,
   onDelete,
   label,
 }: {
   isActive: boolean;
   hasError: boolean;
   onTestConnection: () => void;
-  onReEnterKey: () => void;
   onDelete: () => void;
   label: string;
 }) {
@@ -580,18 +210,6 @@ function ProviderOverflowMenu({
               {t('settings.providers.testConnection')}
             </button>
           )}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              close();
-              onReEnterKey();
-            }}
-            className={itemClass}
-          >
-            <KeyRound className="w-3.5 h-3.5" />
-            {t('settings.providers.reEnterKey')}
-          </button>
           {confirmDelete ? (
             <div className="px-2.5 py-1.5 flex items-center gap-1.5">
               <button
@@ -635,18 +253,15 @@ function ProviderCard({
   config,
   onDelete,
   onActivate,
-  onReEnterKey,
 }: {
   row: ProviderRow;
   config: OnboardingState | null;
   onDelete: (p: string) => void;
   onActivate: (p: string) => void;
-  onReEnterKey: (p: SupportedOnboardingProvider) => void;
 }) {
   const t = useT();
   const pushToast = useCodesignStore((s) => s.pushToast);
-  const label =
-    row.label ?? SHORTLIST[row.provider as SupportedOnboardingProvider]?.label ?? row.provider;
+  const label = row.label ?? row.provider;
   const hasError = row.error !== undefined;
 
   const stateClass = hasError
@@ -727,39 +342,17 @@ function ProviderCard({
               {t('settings.providers.setActive')}
             </button>
           )}
-          {row.hasKey === false && !hasError && (
-            <button
-              type="button"
-              onClick={() => onReEnterKey(row.provider as SupportedOnboardingProvider)}
-              className="h-7 px-2.5 rounded-[var(--radius-sm)] text-[var(--text-xs)] text-[var(--color-warning,_#d97706)] border border-[var(--color-warning,_#d97706)] bg-[var(--color-surface)] hover:opacity-80 transition-opacity"
-            >
-              {t('settings.providers.addKey')}
-            </button>
-          )}
-          {hasError && (
-            <button
-              type="button"
-              onClick={() => onReEnterKey(row.provider as SupportedOnboardingProvider)}
-              className="h-7 px-2.5 rounded-[var(--radius-sm)] text-[var(--text-xs)] text-[var(--color-error)] border border-[var(--color-error)] bg-[var(--color-surface)] hover:opacity-80 transition-opacity"
-            >
-              {t('settings.providers.reEnterKey')}
-            </button>
-          )}
           <ProviderOverflowMenu
             isActive={row.isActive}
             hasError={hasError}
             onTestConnection={handleTestConnection}
-            onReEnterKey={() => onReEnterKey(row.provider as SupportedOnboardingProvider)}
             onDelete={() => onDelete(row.provider)}
             label={label}
           />
         </div>
       </div>
 
-      {row.isActive &&
-        !hasError &&
-        config !== null &&
-        isSupportedOnboardingProvider(row.provider) && (
+      {row.isActive && !hasError && config !== null && (
           <ActiveModelSelector config={config} provider={row.provider} />
         )}
     </div>
@@ -771,35 +364,42 @@ function ActiveModelSelector({
   provider,
 }: {
   config: OnboardingState;
-  provider: SupportedOnboardingProvider;
+  provider: string;
 }) {
   const t = useT();
-  const sl = SHORTLIST[provider];
-  const primaryOptions = sl.primary.map((m) => ({ value: m, label: m }));
   const setConfig = useCodesignStore((s) => s.completeOnboarding);
   const pushToast = useCodesignStore((s) => s.pushToast);
 
-  const [primary, setPrimary] = useState(config.modelPrimary ?? sl.defaultPrimary);
+  const [primary, setPrimary] = useState(config.modelPrimary ?? '');
   const [editing, setEditing] = useState(false);
+  const [models, setModels] = useState<string[] | null>(null);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [manualInput, setManualInput] = useState('');
 
   useEffect(() => {
-    setPrimary(config.modelPrimary ?? sl.defaultPrimary);
-  }, [config.modelPrimary, sl.defaultPrimary]);
+    setPrimary(config.modelPrimary ?? '');
+  }, [config.modelPrimary]);
 
-  // Monotonic counter to guard against overlapping save races: if a later
-  // save has already fired, a stale failure from an earlier save must NOT
-  // roll back the UI to the prior-to-earlier value.
+  useEffect(() => {
+    if (!editing) return;
+    if (models !== null) return;
+    if (!window.codesign?.models?.listForProvider) return;
+    let cancelled = false;
+    setLoadingModels(true);
+    void window.codesign.models.listForProvider(provider).then((res) => {
+      if (cancelled) return;
+      setLoadingModels(false);
+      setModels(res.ok ? res.models : []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [editing, models, provider]);
+
   const saveSeq = useRef(0);
 
   async function save(next: string): Promise<boolean> {
-    if (!window.codesign) {
-      pushToast({
-        variant: 'error',
-        title: t('settings.providers.toast.modelSaveFailed'),
-        description: t('settings.common.unknownError'),
-      });
-      return false;
-    }
+    if (!window.codesign) return false;
     try {
       const updated = await window.codesign.settings.setActiveProvider({
         provider,
@@ -822,24 +422,66 @@ function ActiveModelSelector({
     const seq = ++saveSeq.current;
     setPrimary(v);
     setEditing(false);
+    setModels(null);
     void save(v).then((ok) => {
       if (!ok && seq === saveSeq.current) setPrimary(prev);
     });
   }
 
+  function handleManualSubmit() {
+    const trimmed = manualInput.trim();
+    if (trimmed.length > 0) handleChange(trimmed);
+  }
+
+  const options =
+    models !== null && models.length > 0 ? models.map((m) => ({ value: m, label: m })) : null;
+
   return (
     <div className="mt-[var(--space-2)] flex items-center gap-[var(--space-2)] text-[var(--text-xs)] text-[var(--color-text-muted)]">
       <Cpu className="w-3 h-3 shrink-0" />
       {editing ? (
-        <NativeSelect value={primary} onChange={handleChange} options={primaryOptions} />
+        loadingModels ? (
+          <span className="inline-flex items-center gap-1 h-6 px-2 text-[var(--text-xs)]">
+            <Loader2 className="w-3 h-3 animate-spin" />
+          </span>
+        ) : options !== null ? (
+          <NativeSelect value={primary} onChange={handleChange} options={options} />
+        ) : (
+          <form
+            className="inline-flex items-center gap-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleManualSubmit();
+            }}
+          >
+            <input
+              type="text"
+              value={manualInput}
+              onChange={(e) => setManualInput(e.target.value)}
+              placeholder="model-name"
+              // biome-ignore lint/a11y/noAutofocus: user just clicked to edit
+              autoFocus
+              className="h-6 w-40 px-2 rounded-[var(--radius-sm)] bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--text-xs)] font-mono text-[var(--color-text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-focus-ring)]"
+              onBlur={() => {
+                if (manualInput.trim().length === 0) setEditing(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setEditing(false);
+              }}
+            />
+          </form>
+        )
       ) : (
         <button
           type="button"
-          onClick={() => setEditing(true)}
+          onClick={() => {
+            setEditing(true);
+            setManualInput(primary);
+          }}
           aria-label={t('settings.providers.editModel')}
           className="inline-flex items-center gap-1 h-6 px-2 rounded-[var(--radius-sm)] bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--text-xs)] font-mono text-[var(--color-text-primary)] hover:bg-[var(--color-surface-hover)] transition-colors"
         >
-          {primary}
+          {primary || t('settings.providers.noModel')}
           <ChevronDown className="w-3 h-3 text-[var(--color-text-muted)]" />
         </button>
       )}
@@ -901,9 +543,7 @@ function ModelsTab() {
   const pushToast = useCodesignStore((s) => s.pushToast);
   const [rows, setRows] = useState<ProviderRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
   const [showAddCustom, setShowAddCustom] = useState(false);
-  const [reEnterProvider, setReEnterProvider] = useState<SupportedOnboardingProvider | null>(null);
   const [externalConfigs, setExternalConfigs] = useState<{
     codex?: { count: number } | undefined;
     claudeCode?: { baseUrl: string } | undefined;
@@ -1014,7 +654,7 @@ function ModelsTab() {
       pushToast({
         variant: 'error',
         title: t('settings.providers.toast.activateFailed'),
-        description: t('settings.providers.toast.missingModel') ?? 'Provider has no default model — edit it first.',
+        description: t('settings.providers.toast.missingModel'),
       });
       return;
     }
@@ -1039,40 +679,8 @@ function ModelsTab() {
     }
   }
 
-  async function handleAddSave(nextRows: ProviderRow[]) {
-    setRows(nextRows);
-    setShowAdd(false);
-    setReEnterProvider(null);
-    // Sync Zustand so TopBar (and any other config-bound surface) reflects
-    // the freshly-added provider immediately. Without this, the active
-    // provider/model display can lag until a manual reload.
-    if (window.codesign) {
-      try {
-        const state = await window.codesign.onboarding.getState();
-        setConfig(state);
-      } catch (err) {
-        pushToast({
-          variant: 'error',
-          title: t('settings.providers.toast.modelSaveFailed'),
-          description: err instanceof Error ? err.message : t('settings.common.unknownError'),
-        });
-        return;
-      }
-    }
-    pushToast({ variant: 'success', title: t('settings.providers.toast.saved') });
-  }
-
   return (
     <>
-      {(showAdd || reEnterProvider !== null) && (
-        <AddProviderModal
-          onSave={handleAddSave}
-          onClose={() => {
-            setShowAdd(false);
-            setReEnterProvider(null);
-          }}
-        />
-      )}
       {showAddCustom && (
         <AddCustomProviderModal
           onSave={async () => {
@@ -1120,16 +728,10 @@ function ModelsTab() {
           )}
         <div className="flex items-center justify-between gap-[var(--space-3)] min-h-[var(--size-control-sm)]">
           <SectionTitle>{t('settings.providers.sectionTitle')}</SectionTitle>
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setShowAddCustom(true)}>
-              <Plus className="w-3.5 h-3.5" />
-              {t('settings.providers.addCustom')}
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setShowAdd(true)}>
-              <Plus className="w-3.5 h-3.5" />
-              {t('settings.providers.addProvider')}
-            </Button>
-          </div>
+          <Button variant="secondary" size="sm" onClick={() => setShowAddCustom(true)}>
+            <Plus className="w-3.5 h-3.5" />
+            {t('settings.providers.addProvider')}
+          </Button>
         </div>
 
         {loading && (
@@ -1154,7 +756,6 @@ function ModelsTab() {
                 config={config}
                 onDelete={handleDelete}
                 onActivate={handleActivate}
-                onReEnterKey={setReEnterProvider}
               />
             ))}
           </div>
