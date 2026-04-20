@@ -31,6 +31,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import type { AppPaths, Preferences, ProviderRow } from '../../../preload/index';
 import { useCodesignStore } from '../store';
+import { AddCustomProviderModal } from './AddCustomProviderModal';
 import { ConnectionDiagnosticPanel } from './ConnectionDiagnosticPanel';
 
 type Tab = 'models' | 'appearance' | 'storage' | 'advanced';
@@ -638,13 +639,14 @@ function ProviderCard({
 }: {
   row: ProviderRow;
   config: OnboardingState | null;
-  onDelete: (p: SupportedOnboardingProvider) => void;
-  onActivate: (p: SupportedOnboardingProvider) => void;
+  onDelete: (p: string) => void;
+  onActivate: (p: string) => void;
   onReEnterKey: (p: SupportedOnboardingProvider) => void;
 }) {
   const t = useT();
   const pushToast = useCodesignStore((s) => s.pushToast);
-  const label = SHORTLIST[row.provider]?.label ?? row.provider;
+  const label =
+    row.label ?? SHORTLIST[row.provider as SupportedOnboardingProvider]?.label ?? row.provider;
   const hasError = row.error !== undefined;
 
   const stateClass = hasError
@@ -727,7 +729,7 @@ function ProviderCard({
           {hasError && (
             <button
               type="button"
-              onClick={() => onReEnterKey(row.provider)}
+              onClick={() => onReEnterKey(row.provider as SupportedOnboardingProvider)}
               className="h-7 px-2.5 rounded-[var(--radius-sm)] text-[var(--text-xs)] text-[var(--color-error)] border border-[var(--color-error)] bg-[var(--color-surface)] hover:opacity-80 transition-opacity"
             >
               {t('settings.providers.reEnterKey')}
@@ -737,16 +739,19 @@ function ProviderCard({
             isActive={row.isActive}
             hasError={hasError}
             onTestConnection={handleTestConnection}
-            onReEnterKey={() => onReEnterKey(row.provider)}
+            onReEnterKey={() => onReEnterKey(row.provider as SupportedOnboardingProvider)}
             onDelete={() => onDelete(row.provider)}
             label={label}
           />
         </div>
       </div>
 
-      {row.isActive && !hasError && config !== null && (
-        <ActiveModelSelector config={config} provider={row.provider} />
-      )}
+      {row.isActive &&
+        !hasError &&
+        config !== null &&
+        isSupportedOnboardingProvider(row.provider) && (
+          <ActiveModelSelector config={config} provider={row.provider} />
+        )}
     </div>
   );
 }
@@ -832,6 +837,37 @@ function ActiveModelSelector({
   );
 }
 
+function ImportBanner({
+  label,
+  onImport,
+  onDismiss,
+}: {
+  label: string;
+  onImport: () => void;
+  onDismiss: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-accent)] bg-[var(--color-accent-tint)] px-3 py-2 flex items-center gap-2">
+      <span className="flex-1 text-[var(--text-xs)] text-[var(--color-text-primary)]">{label}</span>
+      <button
+        type="button"
+        onClick={onImport}
+        className="h-7 px-2.5 rounded-[var(--radius-sm)] text-[var(--text-xs)] text-[var(--color-on-accent)] bg-[var(--color-accent)] hover:opacity-90 transition-opacity"
+      >
+        {t('settings.providers.import.action')}
+      </button>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="h-7 px-2 rounded-[var(--radius-sm)] text-[var(--text-xs)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors"
+      >
+        {t('settings.providers.import.dismiss')}
+      </button>
+    </div>
+  );
+}
+
 function ModelsTab() {
   const t = useT();
   const config = useCodesignStore((s) => s.config);
@@ -840,7 +876,12 @@ function ModelsTab() {
   const [rows, setRows] = useState<ProviderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [showAddCustom, setShowAddCustom] = useState(false);
   const [reEnterProvider, setReEnterProvider] = useState<SupportedOnboardingProvider | null>(null);
+  const [externalConfigs, setExternalConfigs] = useState<{
+    codex?: { count: number } | undefined;
+    claudeCode?: { baseUrl: string } | undefined;
+  } | null>(null);
 
   useEffect(() => {
     if (!window.codesign) return;
@@ -855,9 +896,66 @@ function ModelsTab() {
         });
       })
       .finally(() => setLoading(false));
+    void window.codesign.config
+      .detectExternalConfigs()
+      .then((detected) => {
+        setExternalConfigs({
+          ...(detected.codex !== undefined
+            ? { codex: { count: detected.codex.providers.length } }
+            : {}),
+          ...(detected.claudeCode?.provider
+            ? { claudeCode: { baseUrl: detected.claudeCode.provider.baseUrl } }
+            : {}),
+        });
+      })
+      .catch(() => {
+        // non-fatal; banner just doesn't appear
+      });
   }, [pushToast, t]);
 
-  async function handleDelete(provider: SupportedOnboardingProvider) {
+  async function reloadRows() {
+    if (!window.codesign) return;
+    const [nextRows, state] = await Promise.all([
+      window.codesign.settings.listProviders(),
+      window.codesign.onboarding.getState(),
+    ]);
+    setRows(nextRows);
+    setConfig(state);
+  }
+
+  async function handleImportCodex() {
+    if (!window.codesign) return;
+    try {
+      await window.codesign.config.importCodexConfig();
+      setExternalConfigs((prev) => (prev === null ? null : { ...prev, codex: undefined }));
+      await reloadRows();
+      pushToast({ variant: 'success', title: t('settings.providers.import.codexDone') });
+    } catch (err) {
+      pushToast({
+        variant: 'error',
+        title: t('settings.providers.import.failed'),
+        description: err instanceof Error ? err.message : t('settings.common.unknownError'),
+      });
+    }
+  }
+
+  async function handleImportClaudeCode() {
+    if (!window.codesign) return;
+    try {
+      await window.codesign.config.importClaudeCodeConfig();
+      setExternalConfigs((prev) => (prev === null ? null : { ...prev, claudeCode: undefined }));
+      await reloadRows();
+      pushToast({ variant: 'success', title: t('settings.providers.import.claudeCodeDone') });
+    } catch (err) {
+      pushToast({
+        variant: 'error',
+        title: t('settings.providers.import.failed'),
+        description: err instanceof Error ? err.message : t('settings.common.unknownError'),
+      });
+    }
+  }
+
+  async function handleDelete(provider: string) {
     if (!window.codesign) return;
     try {
       const next = await window.codesign.settings.deleteProvider(provider);
@@ -874,20 +972,28 @@ function ModelsTab() {
     }
   }
 
-  async function handleActivate(provider: SupportedOnboardingProvider) {
+  async function handleActivate(provider: string) {
     if (!window.codesign) return;
-    const sl = SHORTLIST[provider];
+    const sl = isSupportedOnboardingProvider(provider) ? SHORTLIST[provider] : null;
+    const currentRow = rows.find((r) => r.provider === provider);
+    const defaultModel =
+      sl?.defaultPrimary ??
+      // For custom providers, ProviderRow doesn't carry defaultModel; fall
+      // back to the active config's model so we always send something.
+      config?.modelPrimary ??
+      '';
+    const label = sl?.label ?? currentRow?.label ?? provider;
     try {
       const next = await window.codesign.settings.setActiveProvider({
         provider,
-        modelPrimary: sl.defaultPrimary,
+        modelPrimary: defaultModel,
       });
       setConfig(next);
       const updatedRows = await window.codesign.settings.listProviders();
       setRows(updatedRows);
       pushToast({
         variant: 'success',
-        title: t('settings.providers.toast.switchedTo', { label: sl.label }),
+        title: t('settings.providers.toast.switchedTo', { label }),
       });
     } catch (err) {
       pushToast({
@@ -932,14 +1038,61 @@ function ModelsTab() {
           }}
         />
       )}
+      {showAddCustom && (
+        <AddCustomProviderModal
+          onSave={async () => {
+            setShowAddCustom(false);
+            await reloadRows();
+            pushToast({ variant: 'success', title: t('settings.providers.toast.saved') });
+          }}
+          onClose={() => setShowAddCustom(false)}
+        />
+      )}
 
       <div className="space-y-[var(--space-3)]">
+        {externalConfigs !== null &&
+          (externalConfigs.codex !== undefined || externalConfigs.claudeCode !== undefined) && (
+            <div className="space-y-2">
+              {externalConfigs.codex !== undefined && (
+                <ImportBanner
+                  label={t('settings.providers.import.codexFound', {
+                    count: externalConfigs.codex.count,
+                  })}
+                  onImport={handleImportCodex}
+                  onDismiss={() =>
+                    setExternalConfigs((prev) =>
+                      prev === null ? null : { ...prev, codex: undefined },
+                    )
+                  }
+                />
+              )}
+              {externalConfigs.claudeCode !== undefined && (
+                <ImportBanner
+                  label={t('settings.providers.import.claudeCodeFound', {
+                    baseUrl: externalConfigs.claudeCode.baseUrl,
+                  })}
+                  onImport={handleImportClaudeCode}
+                  onDismiss={() =>
+                    setExternalConfigs((prev) =>
+                      prev === null ? null : { ...prev, claudeCode: undefined },
+                    )
+                  }
+                />
+              )}
+            </div>
+          )}
         <div className="flex items-center justify-between gap-[var(--space-3)] min-h-[var(--size-control-sm)]">
           <SectionTitle>{t('settings.providers.sectionTitle')}</SectionTitle>
-          <Button variant="secondary" size="sm" onClick={() => setShowAdd(true)}>
-            <Plus className="w-3.5 h-3.5" />
-            {t('settings.providers.addProvider')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setShowAddCustom(true)}>
+              <Plus className="w-3.5 h-3.5" />
+              {t('settings.providers.addCustom')}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowAdd(true)}>
+              <Plus className="w-3.5 h-3.5" />
+              {t('settings.providers.addProvider')}
+            </Button>
+          </div>
         </div>
 
         {loading && (

@@ -142,6 +142,7 @@
     "providers": {
       "sectionTitle": "API Providers",
       "addProvider": "Add provider",
+      "addCustom": "Add custom",
       "empty": "No providers configured yet. Add one to start generating.",
       "active": "Active",
       "decryptionFailed": "Decryption failed",
@@ -155,6 +156,31 @@
       "deleteAria": "Delete {{label}} provider",
       "primary": "Primary",
       "fast": "Fast",
+      "custom": {
+        "title": "Add custom endpoint",
+        "wire": "Wire protocol",
+        "wires": {
+          "openai-chat": "OpenAI Chat",
+          "openai-responses": "OpenAI Responses",
+          "anthropic": "Anthropic Messages"
+        },
+        "name": "Label",
+        "baseUrl": "Base URL",
+        "apiKey": "API Key",
+        "defaultModel": "Default model",
+        "test": "Test connection",
+        "testOk": "OK — {{count}} models available",
+        "save": "Save & continue"
+      },
+      "import": {
+        "action": "Import",
+        "dismiss": "Dismiss",
+        "codexFound": "Codex config detected — import {{count}} providers?",
+        "claudeCodeFound": "Claude Code gateway detected at {{baseUrl}} — import?",
+        "codexDone": "Codex providers imported",
+        "claudeCodeDone": "Claude Code provider imported",
+        "failed": "Import failed"
+      },
       "modal": {
         "title": "Add provider",
         "provider": "Provider",

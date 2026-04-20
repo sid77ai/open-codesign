@@ -299,6 +299,8 @@ function registerIpcHandlers(): void {
           referenceUrl: promptContext.referenceUrl,
           designSystem: promptContext.designSystem ?? null,
           ...(baseUrl !== undefined ? { baseUrl } : {}),
+          wire: active.wire,
+          ...(active.httpHeaders !== undefined ? { httpHeaders: active.httpHeaders } : {}),
           signal: controller.signal,
           logger: coreLogger,
         },
@@ -389,6 +391,8 @@ function registerIpcHandlers(): void {
           referenceUrl: promptContext.referenceUrl,
           designSystem: promptContext.designSystem ?? null,
           ...(baseUrl !== undefined ? { baseUrl } : {}),
+          wire: active.wire,
+          ...(active.httpHeaders !== undefined ? { httpHeaders: active.httpHeaders } : {}),
           signal: controller.signal,
         },
         id,
@@ -469,6 +473,8 @@ function registerIpcHandlers(): void {
         referenceUrl: promptContext.referenceUrl,
         designSystem: promptContext.designSystem ?? null,
         ...(baseUrl !== undefined ? { baseUrl } : {}),
+        wire: active.wire,
+        ...(active.httpHeaders !== undefined ? { httpHeaders: active.httpHeaders } : {}),
       });
       logIpc.info('applyComment.ok', {
         ms: Date.now() - t0,

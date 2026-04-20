@@ -141,6 +141,7 @@
     "providers": {
       "sectionTitle": "API 服务",
       "addProvider": "添加服务",
+      "addCustom": "添加自定义",
       "empty": "还没有配置任何服务，添加一个即可开始生成。",
       "active": "当前",
       "decryptionFailed": "解密失败",
@@ -154,6 +155,31 @@
       "deleteAria": "删除 {{label}} 服务",
       "primary": "主力",
       "fast": "快速",
+      "custom": {
+        "title": "添加自定义接入点",
+        "wire": "协议类型",
+        "wires": {
+          "openai-chat": "OpenAI Chat",
+          "openai-responses": "OpenAI Responses",
+          "anthropic": "Anthropic Messages"
+        },
+        "name": "名称",
+        "baseUrl": "接入地址",
+        "apiKey": "API Key",
+        "defaultModel": "默认模型",
+        "test": "测试连接",
+        "testOk": "正常 — 共 {{count}} 个模型",
+        "save": "保存并继续"
+      },
+      "import": {
+        "action": "导入",
+        "dismiss": "忽略",
+        "codexFound": "发现 Codex 配置 — 导入 {{count}} 个服务？",
+        "claudeCodeFound": "发现 Claude Code 网关 {{baseUrl}} — 导入？",
+        "codexDone": "已导入 Codex 服务",
+        "claudeCodeDone": "已导入 Claude Code 服务",
+        "failed": "导入失败"
+      },
       "modal": {
         "title": "添加服务",
         "provider": "服务商",
