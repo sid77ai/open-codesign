@@ -253,11 +253,13 @@ function ProviderCard({
   config,
   onDelete,
   onActivate,
+  onRowChanged,
 }: {
   row: ProviderRow;
   config: OnboardingState | null;
   onDelete: (p: string) => void;
   onActivate: (p: string) => void;
+  onRowChanged: (row: ProviderRow) => void;
 }) {
   const t = useT();
   const pushToast = useCodesignStore((s) => s.pushToast);
@@ -359,12 +361,7 @@ function ProviderCard({
         <ReasoningDepthSelector
           provider={row.provider}
           value={row.reasoningLevel}
-          onUpdated={(nextRow) => {
-            // Fire-and-forget refresh of parent rows list is handled by the
-            // callback set in ProvidersList; this component just needs to
-            // let the parent know a write succeeded.
-            void nextRow;
-          }}
+          onUpdated={onRowChanged}
         />
       )}
     </div>
@@ -470,9 +467,21 @@ function ReasoningDepthSelector({
   const t = useT();
   const pushToast = useCodesignStore((s) => s.pushToast);
   const [saving, setSaving] = useState(false);
+  // Controlled local state — optimistic so the dropdown reflects the user's
+  // choice immediately, before the IPC round-trip resolves. Without this,
+  // the <select> re-renders from the stale `value` prop and snaps back to
+  // the previous level the instant the user picks a new one.
+  const [current, setCurrent] = useState<ReasoningOption>(value ?? '');
+  useEffect(() => {
+    setCurrent(value ?? '');
+  }, [value]);
+  const saveSeq = useRef(0);
 
   async function handleChange(next: ReasoningOption) {
     if (!window.codesign?.config?.updateProvider) return;
+    const prev = current;
+    const seq = ++saveSeq.current;
+    setCurrent(next); // optimistic
     setSaving(true);
     try {
       // '' means "clear the per-provider override and fall back to the
@@ -486,17 +495,19 @@ function ReasoningDepthSelector({
         if (row) onUpdated(row);
       }
     } catch (err) {
+      // Roll back the optimistic update only if this is still the latest
+      // in-flight save — otherwise a newer pick is about to land.
+      if (seq === saveSeq.current) setCurrent(prev);
       pushToast({
         variant: 'error',
         title: t('settings.providers.toast.reasoningSaveFailed'),
         description: err instanceof Error ? err.message : t('settings.common.unknownError'),
       });
     } finally {
-      setSaving(false);
+      if (seq === saveSeq.current) setSaving(false);
     }
   }
 
-  const current: ReasoningOption = value ?? '';
   const options: Array<{ value: ReasoningOption; label: string }> = [
     { value: '', label: t('settings.providers.reasoning.default') },
     { value: 'minimal', label: t('settings.providers.reasoning.minimal') },
@@ -799,6 +810,9 @@ function ModelsTab() {
                 config={config}
                 onDelete={handleDelete}
                 onActivate={handleActivate}
+                onRowChanged={(next) =>
+                  setRows((prev) => prev.map((r) => (r.provider === next.provider ? next : r)))
+                }
               />
             ))}
           </div>
