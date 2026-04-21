@@ -1674,7 +1674,7 @@ function AdvancedTab() {
   const pushToast = useCodesignStore((s) => s.pushToast);
   const [prefs, setPrefs] = useState<Preferences>({
     updateChannel: 'stable',
-    generationTimeoutSec: 120,
+    generationTimeoutSec: 1200,
     checkForUpdatesOnStartup: true,
     dismissedUpdateVersion: '',
   });

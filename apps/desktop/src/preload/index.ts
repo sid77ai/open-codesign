@@ -518,7 +518,8 @@ const api = {
     showItemInFolder: (path: string) =>
       ipcRenderer.invoke('diagnostics:v1:showItemInFolder', path) as Promise<void>,
   },
-  openExternal: (url: string) => ipcRenderer.invoke('codesign:open-external', url) as Promise<void>,
+  openExternal: (url: string) =>
+    ipcRenderer.invoke('codesign:v1:open-external', url) as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld('codesign', api);

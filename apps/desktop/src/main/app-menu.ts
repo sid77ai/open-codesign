@@ -35,7 +35,15 @@ export function registerAppMenu(): void {
             }
             try {
               const result = await autoUpdater.checkForUpdates();
-              if (result?.updateInfo.version === app.getVersion()) {
+              if (!result || !result.updateInfo) {
+                dialog.showMessageBox({
+                  type: 'info',
+                  title: 'Update Check',
+                  message: 'Could not determine the latest version. Try again later.',
+                });
+                return;
+              }
+              if (result.updateInfo.version === app.getVersion()) {
                 dialog.showMessageBox({
                   type: 'info',
                   title: 'Up to Date',

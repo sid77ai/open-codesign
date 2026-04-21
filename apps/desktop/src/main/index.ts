@@ -835,14 +835,24 @@ function registerIpcHandlers(): void {
     await shell.openPath(getLogPath());
   });
 
-  ipcMain.handle('codesign:open-external', async (_e, url: unknown) => {
+  ipcMain.handle('codesign:v1:open-external', async (_e, url: unknown) => {
     if (typeof url !== 'string') {
-      throw new CodesignError('codesign:open-external requires a string url', 'IPC_BAD_INPUT');
+      throw new CodesignError('codesign:v1:open-external requires a string url', 'IPC_BAD_INPUT');
     }
-    if (!url.startsWith('https://github.com/OpenCoworkAI/open-codesign/')) {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
       throw new CodesignError('URL not allowed', 'IPC_BAD_INPUT');
     }
-    await shell.openExternal(url);
+    if (
+      parsed.protocol !== 'https:' ||
+      parsed.origin !== 'https://github.com' ||
+      !parsed.pathname.startsWith('/OpenCoworkAI/open-codesign/releases/')
+    ) {
+      throw new CodesignError('URL not allowed', 'IPC_BAD_INPUT');
+    }
+    await shell.openExternal(parsed.toString());
   });
 }
 
@@ -856,6 +866,10 @@ function setupAutoUpdater(): void {
     mainWindow?.webContents.send('codesign:update-not-available', info);
   });
   autoUpdater.on('error', (err) => {
+    getLogger('main:updates').error('autoUpdater.error', {
+      message: err.message,
+      stack: err.stack,
+    });
     mainWindow?.webContents.send('codesign:update-error', err.message);
   });
   ipcMain.handle('codesign:check-for-updates', () => autoUpdater.checkForUpdates());
@@ -869,11 +883,17 @@ async function scheduleStartupUpdateCheck(): Promise<void> {
   if (prefs.checkForUpdatesOnStartup === false) return;
   setTimeout(() => {
     const updateLog = getLogger('main:updates');
-    autoUpdater.checkForUpdates().catch((err: unknown) => {
-      updateLog.error('startup.checkForUpdates.fail', {
+    try {
+      autoUpdater.checkForUpdates().catch((err: unknown) => {
+        updateLog.error('startup.checkForUpdates.fail', {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
+    } catch (err) {
+      updateLog.error('startup.checkForUpdates.throw', {
         message: err instanceof Error ? err.message : String(err),
       });
-    });
+    }
   }, 30_000);
 }
 

@@ -13,10 +13,27 @@ export function UpdateBanner({ store }: { store: StoreApi<UpdateState> }) {
 
   if (!show) return null;
 
+  // Persist FIRST, then update the store on success. If persist fails the
+  // banner stays so the user can retry rather than silently losing the dismiss.
   const onDismiss = async () => {
-    dismissFn();
-    if (window.codesign) {
+    if (!window.codesign) {
+      dismissFn();
+      return;
+    }
+    try {
       await window.codesign.preferences.update({ dismissedUpdateVersion: version });
+      dismissFn();
+    } catch (err) {
+      console.warn('[UpdateBanner] failed to persist dismissedUpdateVersion', err);
+    }
+  };
+
+  const onViewRelease = async () => {
+    if (!window.codesign) return;
+    try {
+      await window.codesign.openExternal(releaseUrl);
+    } catch (err) {
+      console.warn('[UpdateBanner] openExternal failed', err);
     }
   };
 
@@ -29,9 +46,7 @@ export function UpdateBanner({ store }: { store: StoreApi<UpdateState> }) {
         <button
           type="button"
           className="underline underline-offset-2 hover:text-[var(--color-text-primary)] transition-colors"
-          onClick={() => {
-            if (window.codesign) void window.codesign.openExternal(releaseUrl);
-          }}
+          onClick={() => void onViewRelease()}
         >
           {t('updates.bannerViewRelease')}
         </button>

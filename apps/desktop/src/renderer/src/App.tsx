@@ -49,17 +49,26 @@ export function App() {
   const [isResizing, setIsResizing] = useState(false);
 
   const updateStore = useRef(createUpdateStore({ dismissedVersion: '' }));
-  useUpdateWiring(updateStore.current);
+  const [updateStoreReady, setUpdateStoreReady] = useState(false);
+  useUpdateWiring(updateStoreReady ? updateStore.current : null);
 
-  // Seed the dismissed version from persisted preferences once on mount.
   useEffect(() => {
-    if (!window.codesign) return;
-    void window.codesign.preferences.get().then((prefs) => {
-      const dismissed = prefs.dismissedUpdateVersion ?? '';
-      if (dismissed) {
-        updateStore.current.setState({ dismissedVersion: dismissed });
-      }
-    });
+    if (!window.codesign) {
+      setUpdateStoreReady(true);
+      return;
+    }
+    window.codesign.preferences
+      .get()
+      .then((prefs) => {
+        const dismissed = prefs.dismissedUpdateVersion ?? '';
+        if (dismissed) {
+          updateStore.current.setState({ dismissedVersion: dismissed });
+        }
+      })
+      .catch((err) => {
+        console.warn('[App] failed to seed dismissedUpdateVersion', err);
+      })
+      .finally(() => setUpdateStoreReady(true));
   }, []);
   // Once the user has visited Hub we keep HubView mounted (toggled via
   // `hidden`) so going Workspace → Hub doesn't tear down the design-card
