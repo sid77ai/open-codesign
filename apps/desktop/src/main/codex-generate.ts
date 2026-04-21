@@ -119,19 +119,22 @@ function buildUserPrompt(prompt: string, sections: string[]): string {
   ].join('\n\n');
 }
 
-function buildInput(input: CodexGenerateInput): ResponsesInputItem[] {
-  const system = CODEX_SYSTEM_PROMPT;
+function buildInput(input: CodexGenerateInput): {
+  instructions: string;
+  items: ResponsesInputItem[];
+} {
   const sections = buildContextSections({
     designSystem: input.designSystem,
     attachments: input.attachments,
     referenceUrl: input.referenceUrl,
   });
-  const items: ResponsesInputItem[] = [{ role: 'system', content: system }];
+  const items: ResponsesInputItem[] = [];
   for (const h of input.history) {
+    if (h.role === 'system') continue;
     items.push({ role: h.role, content: h.content });
   }
   items.push({ role: 'user', content: buildUserPrompt(input.prompt, sections) });
-  return items;
+  return { instructions: CODEX_SYSTEM_PROMPT, items };
 }
 
 /**
@@ -200,7 +203,7 @@ export async function runCodexGenerate(input: CodexGenerateInput): Promise<Codex
   const factory = input.clientFactory ?? ((opts) => new CodexClient(opts));
   const client = factory({ store, accountId: stored.accountId });
 
-  const items = buildInput(input);
+  const { instructions, items } = buildInput(input);
   log?.info('[codex-generate] step=send_request', {
     ...ctx,
     messages: items.length,
@@ -212,6 +215,7 @@ export async function runCodexGenerate(input: CodexGenerateInput): Promise<Codex
     const req: Parameters<CodexClient['chat']>[0] = {
       model: input.model.modelId,
       input: items,
+      instructions,
     };
     if (input.signal !== undefined) req.signal = input.signal;
     result = await client.chat(req);

@@ -124,9 +124,11 @@ describe('runCodexGenerate', () => {
     const chatArg = (chat.mock.calls as unknown as Array<Array<unknown>>)[0]?.[0] as {
       model: string;
       input: Array<{ role: string }>;
+      instructions?: string;
     };
     expect(chatArg.model).toBe('gpt-5.3-codex');
-    expect(chatArg.input[0]?.role).toBe('system');
+    expect(chatArg.instructions).toBeTruthy();
+    expect(chatArg.input[0]?.role).toBe('user');
     expect(chatArg.input.at(-1)?.role).toBe('user');
 
     expect(result.artifacts).toHaveLength(1);

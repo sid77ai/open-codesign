@@ -19,6 +19,7 @@ export interface CodexChatRequest {
   input: unknown;
   reasoning?: { effort: 'minimal' | 'low' | 'medium' | 'high'; summary?: 'auto' };
   tools?: unknown[];
+  instructions?: string;
   signal?: AbortSignal;
 }
 
@@ -32,6 +33,7 @@ interface ResponsesBody {
   input: unknown;
   stream: false;
   store: false;
+  instructions?: string;
   reasoning?: CodexChatRequest['reasoning'];
   tools?: unknown[];
 }
@@ -91,6 +93,8 @@ export class CodexClient {
       stream: false,
       store: false,
     };
+    if (req.instructions !== undefined && req.instructions.length > 0)
+      body.instructions = req.instructions;
     if (req.reasoning !== undefined) body.reasoning = req.reasoning;
     if (req.tools !== undefined && req.tools.length > 0) body.tools = req.tools;
 
