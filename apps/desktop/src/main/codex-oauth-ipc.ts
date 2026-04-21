@@ -146,7 +146,7 @@ async function runLogin(): Promise<CodexOAuthStatus> {
     });
     throw new CodesignError(
       `Codex login failed: ${err instanceof Error ? err.message : String(err)}`,
-      ERROR_CODES.PROVIDER_AUTH_MISSING,
+      ERROR_CODES.PROVIDER_ERROR,
       { cause: err },
     );
   } finally {
