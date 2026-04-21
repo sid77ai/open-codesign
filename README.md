@@ -251,6 +251,10 @@ Found a bug or have a feature request?
 3. **Open a new issue** using our [bug report](https://github.com/OpenCoworkAI/open-codesign/issues/new?template=bug_report.yml) or [feature request](https://github.com/OpenCoworkAI/open-codesign/issues/new?template=feature_request.yml) template.
 4. For security vulnerabilities, see [SECURITY.md](./SECURITY.md).
 
+## More from OpenCoworkAI 
+
+If you like Open CoDesign, you may also want to check out our earlier project, [Open Cowork](https://github.com/OpenCoworkAI/open-cowork), an open-source AI agent desktop app for Windows and macOS with one-click install, multi-model support, sandbox isolation, and built-in skills.
+
 ## Community
 
 Open CoDesign first launched on the [LINUX DO](https://linux.do/) community — thanks to everyone there for early feedback and discussion.
