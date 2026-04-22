@@ -350,6 +350,7 @@
       "showTransient": "显示重试后成功的错误",
       "empty": "暂无诊断事件。",
       "dbUnavailable": "诊断存储不可用。错误仍会写入 main.log，但需要重启应用后才会在此显示。请检查磁盘空间和权限。",
+      "inMemoryFallback": "仅显示内存中的错误记录 — DB 不可用，重启后会丢失。",
       "report": "上报",
       "column": {
         "time": "时间",
@@ -810,6 +811,11 @@
       "bundleSavedTitle": "诊断包已保存",
       "bundleSavedDescription": "已保存至",
       "revealBundle": "打开所在位置",
+      "openFailedTitle": "浏览器打开失败",
+      "openFailedCopyHint": "请复制 issue 链接，手动在浏览器打开。",
+      "copyIssueUrl": "复制链接",
+      "clipboardFailedTitle": "复制到剪贴板失败",
+      "clipboardFailedHint": "诊断包已保存到磁盘 — 请手动打开并在 GitHub issue 里粘贴摘要。",
       "preview": {
         "code": "错误码",
         "scope": "范围",

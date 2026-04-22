@@ -350,6 +350,7 @@
       "showTransient": "Show retried-then-succeeded errors",
       "empty": "No diagnostic events recorded yet.",
       "dbUnavailable": "Diagnostic storage unavailable. Errors are still logged to main.log but won't appear here until the app restarts. Check disk space and permissions.",
+      "inMemoryFallback": "Showing in-memory records — DB unavailable, these will not persist across restart.",
       "report": "Report",
       "column": {
         "time": "Time",
@@ -814,6 +815,11 @@
       "bundleSavedTitle": "Bundle saved",
       "bundleSavedDescription": "Saved to",
       "revealBundle": "Show in folder",
+      "openFailedTitle": "Couldn't open the browser",
+      "openFailedCopyHint": "Copy the issue URL and open it manually.",
+      "copyIssueUrl": "Copy URL",
+      "clipboardFailedTitle": "Couldn't copy to clipboard",
+      "clipboardFailedHint": "The bundle is on disk — open it manually and paste the summary there.",
       "preview": {
         "code": "Code",
         "scope": "Scope",

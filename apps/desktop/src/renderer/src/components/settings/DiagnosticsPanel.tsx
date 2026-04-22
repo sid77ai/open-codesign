@@ -1,7 +1,7 @@
 import { getCurrentLocale, useT } from '@open-codesign/i18n';
 import type { DiagnosticEventRow, ReportableError } from '@open-codesign/shared';
 import { AlertCircle, Download, FolderOpen } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useCodesignStore } from '../../store';
 
 type DiagnosticsApi = NonNullable<NonNullable<Window['codesign']>['diagnostics']>;
@@ -82,16 +82,48 @@ export function rowToReportable(row: DiagnosticEventRow): ReportableError {
   return out;
 }
 
+/**
+ * Project an in-memory ReportableError into the row shape the table renders.
+ * Used as the fallback when the main-process DB is unavailable so the user
+ * still has a way to locate dismissed error toasts from this session.
+ */
+export function reportableToRow(err: ReportableError): DiagnosticEventRow {
+  return {
+    id: err.persistedEventId ?? -1,
+    schemaVersion: 1,
+    ts: err.ts,
+    level: 'error',
+    code: err.code,
+    scope: err.scope,
+    runId: err.runId,
+    fingerprint: err.persistedFingerprint ?? err.fingerprint,
+    message: err.message,
+    stack: err.stack,
+    transient: false,
+    count: 1,
+    context: err.context,
+  };
+}
+
 export function DiagnosticsPanel() {
   const t = useT();
   const locale = getCurrentLocale();
   const refreshDiagnosticEvents = useCodesignStore((s) => s.refreshDiagnosticEvents);
   const markDiagnosticsRead = useCodesignStore((s) => s.markDiagnosticsRead);
   const openReportDialog = useCodesignStore((s) => s.openReportDialog);
+  const reportableErrors = useCodesignStore((s) => s.reportableErrors);
   const [events, setEvents] = useState<DiagnosticEventRow[]>([]);
   const [dbAvailable, setDbAvailable] = useState(true);
   const [includeTransient, setIncludeTransient] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  // When the DB is down, project reportableErrors into row shape so the
+  // table still has something to show. Newest first to match the usual
+  // DB ordering (listEvents returns in descending ts).
+  const rows = useMemo(() => {
+    if (dbAvailable) return events;
+    return [...reportableErrors].sort((a, b) => b.ts - a.ts).map(reportableToRow);
+  }, [dbAvailable, events, reportableErrors]);
 
   // Mount: refresh store (badge/unread) and mark panel as read.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only effect
@@ -127,6 +159,19 @@ export function DiagnosticsPanel() {
   }
 
   function onReport(row: DiagnosticEventRow) {
+    // In-memory fallback: reportableErrors already has a live record with
+    // the right localId; open the dialog on it directly instead of
+    // re-projecting through rowToReportable (which would mint a "db-N"
+    // localId that doesn't match any store entry).
+    if (!dbAvailable) {
+      const match = reportableErrors.find(
+        (r) => r.fingerprint === row.fingerprint && r.ts === row.ts,
+      );
+      if (match) {
+        openReportDialog(match.localId);
+        return;
+      }
+    }
     const reportable = rowToReportable(row);
     // Register the row in the in-memory store so the dialog can read it back
     // through the same lookup path toasts use.
@@ -178,7 +223,13 @@ export function DiagnosticsPanel() {
         {t('settings.diagnostics.showTransient')}
       </label>
 
-      {events.length === 0 ? (
+      {!dbAvailable && rows.length > 0 ? (
+        <p className="text-[var(--text-xs)] text-[var(--color-text-muted)] bg-[var(--color-surface)] border border-[var(--color-border-subtle)] rounded-[var(--radius-md)] px-2 py-1.5">
+          {t('settings.diagnostics.inMemoryFallback')}
+        </p>
+      ) : null}
+
+      {rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 py-10 text-[var(--text-sm)] text-[var(--color-text-muted)]">
           <AlertCircle className="w-5 h-5" />
           {dbAvailable ? t('settings.diagnostics.empty') : t('settings.diagnostics.dbUnavailable')}
@@ -196,9 +247,9 @@ export function DiagnosticsPanel() {
             </tr>
           </thead>
           <tbody>
-            {events.map((event) => (
+            {rows.map((event) => (
               <tr
-                key={event.id}
+                key={`${event.id}-${event.fingerprint}-${event.ts}`}
                 className="border-t border-[var(--color-border-subtle)] align-top text-[var(--color-text-secondary)]"
               >
                 <td
