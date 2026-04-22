@@ -1,52 +1,47 @@
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { rotateLogFile } from './logger';
+
+// Use path.join so expectations match native separators on Windows CI.
+const LOGS = join('/tmp', 'logs');
+const ACTIVE = join(LOGS, 'main.log');
+const OLD = join(LOGS, 'main.old.log');
+const OLDEST = join(LOGS, 'main.old.1.log');
 
 describe('rotateLogFile', () => {
   it('shifts main.log -> main.old.log when no old exists', () => {
     const fs = {
-      existsSync: vi.fn((p: string) => p.endsWith('main.log')),
+      existsSync: vi.fn((p: string) => p === ACTIVE),
       renameSync: vi.fn(),
       unlinkSync: vi.fn(),
     };
-    rotateLogFile('/tmp/logs/main.log', fs);
-    expect(fs.renameSync).toHaveBeenCalledWith('/tmp/logs/main.log', '/tmp/logs/main.old.log');
+    rotateLogFile(ACTIVE, fs);
+    expect(fs.renameSync).toHaveBeenCalledWith(ACTIVE, OLD);
     expect(fs.unlinkSync).not.toHaveBeenCalled();
   });
 
   it('shifts both slots when main.log and main.old.log exist', () => {
-    const exists = new Set(['/tmp/logs/main.log', '/tmp/logs/main.old.log']);
+    const exists = new Set([ACTIVE, OLD]);
     const fs = {
       existsSync: vi.fn((p: string) => exists.has(p)),
       renameSync: vi.fn(),
       unlinkSync: vi.fn(),
     };
-    rotateLogFile('/tmp/logs/main.log', fs);
-    expect(fs.renameSync).toHaveBeenNthCalledWith(
-      1,
-      '/tmp/logs/main.old.log',
-      '/tmp/logs/main.old.1.log',
-    );
-    expect(fs.renameSync).toHaveBeenNthCalledWith(
-      2,
-      '/tmp/logs/main.log',
-      '/tmp/logs/main.old.log',
-    );
+    rotateLogFile(ACTIVE, fs);
+    expect(fs.renameSync).toHaveBeenNthCalledWith(1, OLD, OLDEST);
+    expect(fs.renameSync).toHaveBeenNthCalledWith(2, ACTIVE, OLD);
     expect(fs.unlinkSync).not.toHaveBeenCalled();
   });
 
   it('drops oldest when all three slots exist', () => {
-    const exists = new Set([
-      '/tmp/logs/main.log',
-      '/tmp/logs/main.old.log',
-      '/tmp/logs/main.old.1.log',
-    ]);
+    const exists = new Set([ACTIVE, OLD, OLDEST]);
     const fs = {
       existsSync: vi.fn((p: string) => exists.has(p)),
       renameSync: vi.fn(),
       unlinkSync: vi.fn(),
     };
-    rotateLogFile('/tmp/logs/main.log', fs);
-    expect(fs.unlinkSync).toHaveBeenCalledWith('/tmp/logs/main.old.1.log');
+    rotateLogFile(ACTIVE, fs);
+    expect(fs.unlinkSync).toHaveBeenCalledWith(OLDEST);
     expect(fs.renameSync).toHaveBeenCalledTimes(2);
   });
 
@@ -56,7 +51,7 @@ describe('rotateLogFile', () => {
       renameSync: vi.fn(),
       unlinkSync: vi.fn(),
     };
-    rotateLogFile('/tmp/logs/main.log', fs);
+    rotateLogFile(ACTIVE, fs);
     expect(fs.renameSync).not.toHaveBeenCalled();
     expect(fs.unlinkSync).not.toHaveBeenCalled();
   });
@@ -73,7 +68,7 @@ describe('rotateLogFile', () => {
     const onError = (step: string, err: unknown) => {
       errors.push({ step, message: err instanceof Error ? err.message : String(err) });
     };
-    expect(() => rotateLogFile('/tmp/logs/main.log', fs, onError)).not.toThrow();
+    expect(() => rotateLogFile(ACTIVE, fs, onError)).not.toThrow();
     expect(errors.map((e) => e.step)).toEqual(['rename_old_to_oldest', 'rename_active_to_old']);
     expect(errors[0]?.message).toContain('EBUSY');
     expect(fs.renameSync).toHaveBeenCalledTimes(2);
@@ -91,7 +86,7 @@ describe('rotateLogFile', () => {
     const onError = (step: string, err: unknown) => {
       errors.push({ step, message: err instanceof Error ? err.message : String(err) });
     };
-    rotateLogFile('/tmp/logs/main.log', fs, onError);
+    rotateLogFile(ACTIVE, fs, onError);
     expect(errors[0]?.step).toBe('unlink_oldest');
     expect(fs.renameSync).toHaveBeenCalledTimes(2);
   });
