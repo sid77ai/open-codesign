@@ -104,6 +104,13 @@ export interface ExternalConfigsDetection {
      *  UI should show a warning-style banner with no import button. */
     blocked: boolean;
   };
+  opencode?: {
+    providers: ProviderEntry[];
+    apiKeyMap: Record<string, string>;
+    activeProvider: string | null;
+    activeModel: string | null;
+    warnings: string[];
+  };
 }
 
 export interface AppPaths {
@@ -355,6 +362,8 @@ const api = {
       ipcRenderer.invoke('config:v1:import-claude-code-config') as Promise<OnboardingState>,
     importGeminiConfig: () =>
       ipcRenderer.invoke('config:v1:import-gemini-config') as Promise<OnboardingState>,
+    importOpencodeConfig: () =>
+      ipcRenderer.invoke('config:v1:import-opencode-config') as Promise<OnboardingState>,
   },
   preferences: {
     get: () => ipcRenderer.invoke('preferences:v1:get') as Promise<Preferences>,

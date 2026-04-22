@@ -570,14 +570,14 @@ function maskBaseUrlCreds(raw: string): string {
   }
 }
 
-function readDismissed(kind: 'codex' | 'claudeCode' | 'gemini'): boolean {
+function readDismissed(kind: 'codex' | 'claudeCode' | 'gemini' | 'opencode'): boolean {
   try {
     return window.localStorage.getItem(DISMISSED_BANNER_PREFIX + kind) === '1';
   } catch {
     return false;
   }
 }
-function writeDismissed(kind: 'codex' | 'claudeCode' | 'gemini'): void {
+function writeDismissed(kind: 'codex' | 'claudeCode' | 'gemini' | 'opencode'): void {
   try {
     window.localStorage.setItem(DISMISSED_BANNER_PREFIX + kind, '1');
   } catch {
@@ -812,6 +812,7 @@ function ModelsTab() {
           blocked: boolean;
         }
       | undefined;
+    opencode?: { count: number } | undefined;
   } | null>(null);
   /**
    * When set, `AddCustomProviderModal` mounts with these fields pre-filled.
@@ -849,6 +850,7 @@ function ModelsTab() {
         const dismissedCodex = readDismissed('codex');
         const dismissedClaudeCode = readDismissed('claudeCode');
         const dismissedGemini = readDismissed('gemini');
+        const dismissedOpencode = readDismissed('opencode');
         const surface =
           detected.claudeCode !== undefined &&
           detected.claudeCode.userType !== 'no-config' &&
@@ -885,6 +887,9 @@ function ModelsTab() {
                   blocked: detected.gemini.blocked,
                 },
               }
+            : {}),
+          ...(detected.opencode !== undefined && !dismissedOpencode
+            ? { opencode: { count: detected.opencode.providers.length } }
             : {}),
         });
       })
@@ -926,6 +931,22 @@ function ModelsTab() {
       setExternalConfigs((prev) => (prev === null ? null : { ...prev, gemini: undefined }));
       await reloadRows();
       pushToast({ variant: 'success', title: t('settings.providers.import.geminiDone') });
+    } catch (err) {
+      pushToast({
+        variant: 'error',
+        title: t('settings.providers.import.failed'),
+        description: err instanceof Error ? err.message : t('settings.common.unknownError'),
+      });
+    }
+  }
+
+  async function handleImportOpencode() {
+    if (!window.codesign) return;
+    try {
+      await window.codesign.config.importOpencodeConfig();
+      setExternalConfigs((prev) => (prev === null ? null : { ...prev, opencode: undefined }));
+      await reloadRows();
+      pushToast({ variant: 'success', title: t('settings.providers.import.opencodeDone') });
     } catch (err) {
       pushToast({
         variant: 'error',
@@ -1116,7 +1137,8 @@ function ModelsTab() {
         {externalConfigs !== null &&
           (externalConfigs.codex !== undefined ||
             externalConfigs.claudeCode !== undefined ||
-            externalConfigs.gemini !== undefined) && (
+            externalConfigs.gemini !== undefined ||
+            externalConfigs.opencode !== undefined) && (
             <div className="space-y-2">
               {externalConfigs.codex !== undefined && (
                 <ImportBanner
@@ -1128,6 +1150,20 @@ function ModelsTab() {
                     writeDismissed('codex');
                     setExternalConfigs((prev) =>
                       prev === null ? null : { ...prev, codex: undefined },
+                    );
+                  }}
+                />
+              )}
+              {externalConfigs.opencode !== undefined && (
+                <ImportBanner
+                  label={t('settings.providers.import.opencodeFound', {
+                    count: externalConfigs.opencode.count,
+                  })}
+                  onImport={handleImportOpencode}
+                  onDismiss={() => {
+                    writeDismissed('opencode');
+                    setExternalConfigs((prev) =>
+                      prev === null ? null : { ...prev, opencode: undefined },
                     );
                   }}
                 />

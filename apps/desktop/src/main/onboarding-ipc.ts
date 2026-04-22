@@ -24,6 +24,7 @@ import { dialog, ipcMain, shell } from './electron-runtime';
 import { type ClaudeCodeImport, readClaudeCodeSettings } from './imports/claude-code-config';
 import { type CodexImport, codexAuthPath, readCodexConfig } from './imports/codex-config';
 import { type GeminiImport, readGeminiCliConfig } from './imports/gemini-cli-config';
+import { type OpencodeImport, readOpencodeConfig } from './imports/opencode-config';
 import { buildSecretRef, decryptSecret, migrateSecrets, tryBuildSecretRef } from './keychain';
 import { defaultLogsDir, getLogger } from './logger';
 import {
@@ -751,6 +752,7 @@ interface ExternalConfigsDetection {
   codex?: CodexImport;
   claudeCode?: ClaudeCodeDetectionMeta;
   gemini?: GeminiDetectionMeta;
+  opencode?: OpencodeImport;
 }
 
 interface GeminiDetectionMeta {
@@ -950,6 +952,53 @@ async function runImportGemini(imported: GeminiImport): Promise<OnboardingState>
   return toState(cachedConfig);
 }
 
+async function runImportOpencode(imported: OpencodeImport): Promise<OnboardingState> {
+  if (imported.providers.length === 0) {
+    throw new CodesignError(
+      'No importable API provider found in OpenCode auth.json (~/.local/share/opencode/auth.json). Log in to a provider with an API key in OpenCode first. / OpenCode 配置里没有可导入的 API provider，请先在 OpenCode 里用 API key 登录。',
+      ERROR_CODES.CONFIG_MISSING,
+    );
+  }
+  const nextProviders: Record<string, ProviderEntry> = { ...(cachedConfig?.providers ?? {}) };
+  const nextSecrets = { ...(cachedConfig?.secrets ?? {}) };
+  if (cachedConfig === null) {
+    for (const [id, entry] of Object.entries(BUILTIN_PROVIDERS)) {
+      if (nextProviders[id] === undefined) nextProviders[id] = { ...entry };
+    }
+  }
+  for (const entry of imported.providers) {
+    nextProviders[entry.id] = entry;
+    const importedApiKey = imported.apiKeyMap[entry.id]?.trim();
+    if (importedApiKey !== undefined && importedApiKey.length > 0) {
+      const ref = tryBuildSecretRef(importedApiKey);
+      if (ref !== null) nextSecrets[entry.id] = ref;
+    }
+  }
+  const fallbackActive = imported.providers[0];
+  if (fallbackActive === undefined) {
+    throw new CodesignError('OpenCode import produced no providers', ERROR_CODES.CONFIG_MISSING);
+  }
+  const activeProvider =
+    imported.activeProvider !== null && nextProviders[imported.activeProvider] !== undefined
+      ? imported.activeProvider
+      : fallbackActive.id;
+  const activeModel = imported.activeModel ?? nextProviders[activeProvider]?.defaultModel ?? '';
+  const next = hydrateConfig({
+    version: 3,
+    activeProvider,
+    activeModel,
+    secrets: nextSecrets,
+    providers: nextProviders,
+    ...(cachedConfig?.designSystem !== undefined
+      ? { designSystem: cachedConfig.designSystem }
+      : {}),
+  });
+  await writeConfig(next);
+  cachedConfig = next;
+  configLoaded = true;
+  return toState(cachedConfig);
+}
+
 interface ListEndpointModelsResponse {
   ok: boolean;
   models?: string[];
@@ -1061,15 +1110,17 @@ export function registerOnboardingIpc(): void {
   ipcMain.handle(
     'config:v1:detect-external-configs',
     async (): Promise<ExternalConfigsDetection> => {
-      const [codex, claudeCode, gemini] = await Promise.all([
+      const [codex, claudeCode, gemini, opencode] = await Promise.all([
         readCodexConfig().catch(() => null),
         readClaudeCodeSettings().catch(() => null),
         readGeminiCliConfig().catch(() => null),
+        readOpencodeConfig().catch(() => null),
       ]);
       const providerIds = Object.keys(cachedConfig?.providers ?? {});
       const alreadyHasCodex = providerIds.some((id) => id.startsWith('codex-'));
       const alreadyHasClaudeCode = providerIds.includes('claude-code-imported');
       const alreadyHasGemini = providerIds.includes('gemini-import');
+      const alreadyHasOpencode = providerIds.some((id) => id.startsWith('opencode-'));
       const out: ExternalConfigsDetection = {};
       if (codex !== null && codex.providers.length > 0 && !alreadyHasCodex) out.codex = codex;
       // Surface Claude Code unless we already imported it. We still surface
@@ -1107,6 +1158,9 @@ export function registerOnboardingIpc(): void {
             blocked,
           };
         }
+      }
+      if (opencode !== null && opencode.providers.length > 0 && !alreadyHasOpencode) {
+        out.opencode = opencode;
       }
       return out;
     },
@@ -1153,6 +1207,17 @@ export function registerOnboardingIpc(): void {
       );
     }
     return runImportGemini(imported);
+  });
+
+  ipcMain.handle('config:v1:import-opencode-config', async (): Promise<OnboardingState> => {
+    const imported = await readOpencodeConfig();
+    if (imported === null) {
+      throw new CodesignError(
+        'No OpenCode auth found at ~/.local/share/opencode/auth.json',
+        ERROR_CODES.CONFIG_MISSING,
+      );
+    }
+    return runImportOpencode(imported);
   });
 
   ipcMain.handle('config:v1:list-endpoint-models', async (_e, raw: unknown) => {

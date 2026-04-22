@@ -1,0 +1,212 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import {
+  opencodeAuthPath,
+  opencodeConfigCandidatePaths,
+  readOpencodeConfig,
+} from './opencode-config';
+
+async function makeHome(): Promise<string> {
+  const home = join(tmpdir(), `open-codesign-opencode-${Date.now()}-${Math.random()}`);
+  await mkdir(home, { recursive: true });
+  return home;
+}
+
+async function writeAuth(home: string, json: unknown): Promise<void> {
+  const dir = join(home, '.local', 'share', 'opencode');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'auth.json'), JSON.stringify(json), 'utf8');
+}
+
+async function writeConfig(home: string, filename: string, body: string): Promise<void> {
+  const dir = join(home, '.config', 'opencode');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, filename), body, 'utf8');
+}
+
+describe('opencodeAuthPath', () => {
+  it('defaults to ~/.local/share/opencode/auth.json on all platforms', () => {
+    const home = '/home/alice';
+    expect(opencodeAuthPath(home, {})).toBe('/home/alice/.local/share/opencode/auth.json');
+  });
+
+  it('honors XDG_DATA_HOME when set', () => {
+    const path = opencodeAuthPath('/home/alice', { XDG_DATA_HOME: '/custom/data' });
+    expect(path).toBe('/custom/data/opencode/auth.json');
+  });
+
+  it('lists jsonc/json/config.json candidates for config', () => {
+    const paths = opencodeConfigCandidatePaths('/home/alice', {});
+    expect(paths).toEqual([
+      '/home/alice/.config/opencode/opencode.jsonc',
+      '/home/alice/.config/opencode/opencode.json',
+      '/home/alice/.config/opencode/config.json',
+    ]);
+  });
+});
+
+describe('readOpencodeConfig', () => {
+  it('returns null when auth.json is absent', async () => {
+    const home = await makeHome();
+    const out = await readOpencodeConfig(home, {});
+    expect(out).toBeNull();
+  });
+
+  it('returns an empty import when auth.json is an empty object', async () => {
+    const home = await makeHome();
+    await writeAuth(home, {});
+    const out = await readOpencodeConfig(home, {});
+    expect(out?.providers).toEqual([]);
+    expect(out?.apiKeyMap).toEqual({});
+    expect(out?.activeProvider).toBeNull();
+    expect(out?.activeModel).toBeNull();
+    expect(out?.warnings).toEqual([]);
+  });
+
+  it('translates a single anthropic api entry into an opencode-anthropic ProviderEntry', async () => {
+    const home = await makeHome();
+    await writeAuth(home, { anthropic: { type: 'api', key: 'sk-ant-abc' } });
+    const out = await readOpencodeConfig(home, {});
+    expect(out?.providers).toHaveLength(1);
+    const entry = out?.providers[0];
+    expect(entry?.id).toBe('opencode-anthropic');
+    expect(entry?.wire).toBe('anthropic');
+    expect(entry?.baseUrl).toBe('https://api.anthropic.com');
+    expect(entry?.defaultModel).toBe('claude-sonnet-4-6');
+    expect(out?.apiKeyMap['opencode-anthropic']).toBe('sk-ant-abc');
+  });
+
+  it('imports both openai and anthropic when both are present', async () => {
+    const home = await makeHome();
+    await writeAuth(home, {
+      openai: { type: 'api', key: 'sk-openai' },
+      anthropic: { type: 'api', key: 'sk-ant' },
+    });
+    const out = await readOpencodeConfig(home, {});
+    const ids = out?.providers.map((p) => p.id).sort();
+    expect(ids).toEqual(['opencode-anthropic', 'opencode-openai']);
+    expect(out?.apiKeyMap['opencode-openai']).toBe('sk-openai');
+    expect(out?.apiKeyMap['opencode-anthropic']).toBe('sk-ant');
+  });
+
+  it('maps google to the OpenAI-compatible Gemini endpoint', async () => {
+    const home = await makeHome();
+    await writeAuth(home, { google: { type: 'api', key: 'AIzaSy-stub' } });
+    const out = await readOpencodeConfig(home, {});
+    const entry = out?.providers[0];
+    expect(entry?.id).toBe('opencode-google');
+    expect(entry?.wire).toBe('openai-chat');
+    expect(entry?.baseUrl).toBe('https://generativelanguage.googleapis.com/v1beta/openai');
+  });
+
+  it('maps openrouter with the shared default model', async () => {
+    const home = await makeHome();
+    await writeAuth(home, { openrouter: { type: 'api', key: 'sk-or' } });
+    const out = await readOpencodeConfig(home, {});
+    expect(out?.providers[0]?.baseUrl).toBe('https://openrouter.ai/api/v1');
+    expect(out?.providers[0]?.defaultModel).toMatch(/^anthropic\/claude-sonnet-4/);
+  });
+
+  it('skips OAuth entries with a warning', async () => {
+    const home = await makeHome();
+    await writeAuth(home, {
+      anthropic: {
+        type: 'oauth',
+        refresh: 'refresh-token',
+        access: 'access-token',
+        expires: Date.now() + 3600_000,
+      },
+    });
+    const out = await readOpencodeConfig(home, {});
+    expect(out?.providers).toEqual([]);
+    expect(out?.warnings.join('\n')).toMatch(/OAuth/i);
+  });
+
+  it('skips wellknown entries with a warning', async () => {
+    const home = await makeHome();
+    await writeAuth(home, {
+      github: { type: 'wellknown', key: 'user', token: 'token' },
+    });
+    const out = await readOpencodeConfig(home, {});
+    expect(out?.providers).toEqual([]);
+    expect(out?.warnings.join('\n')).toMatch(/well-known|wellknown/i);
+  });
+
+  it('skips unknown providers with a warning', async () => {
+    const home = await makeHome();
+    await writeAuth(home, { mistral: { type: 'api', key: 'sk-mist' } });
+    const out = await readOpencodeConfig(home, {});
+    expect(out?.providers).toEqual([]);
+    expect(out?.warnings.join('\n')).toMatch(/mistral.*isn't supported/);
+  });
+
+  it('emits a warning on malformed auth.json and returns no providers', async () => {
+    const home = await makeHome();
+    const dir = join(home, '.local', 'share', 'opencode');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'auth.json'), '{"anthropic": {type: "api"', 'utf8');
+    const out = await readOpencodeConfig(home, {});
+    expect(out?.providers).toEqual([]);
+    expect(out?.warnings[0]).toMatch(/not valid JSON/);
+  });
+
+  it('trims quoted keys', async () => {
+    const home = await makeHome();
+    await writeAuth(home, { anthropic: { type: 'api', key: '  sk-ant-spaced  ' } });
+    const out = await readOpencodeConfig(home, {});
+    expect(out?.apiKeyMap['opencode-anthropic']).toBe('sk-ant-spaced');
+  });
+
+  it('resolves activeProvider and activeModel from opencode.json "model" field', async () => {
+    const home = await makeHome();
+    await writeAuth(home, { anthropic: { type: 'api', key: 'sk-ant' } });
+    await writeConfig(
+      home,
+      'opencode.json',
+      JSON.stringify({ model: 'anthropic/claude-opus-4-1' }),
+    );
+    const out = await readOpencodeConfig(home, {});
+    expect(out?.activeProvider).toBe('opencode-anthropic');
+    expect(out?.activeModel).toBe('claude-opus-4-1');
+    // Default model is rewritten to the user's active selection so the UI
+    // surfaces the pick they're already using.
+    expect(out?.providers[0]?.defaultModel).toBe('claude-opus-4-1');
+  });
+
+  it('ignores active-model hints pointing at providers we did not import', async () => {
+    const home = await makeHome();
+    await writeAuth(home, { anthropic: { type: 'api', key: 'sk-ant' } });
+    await writeConfig(home, 'config.json', JSON.stringify({ model: 'mistral/large' }));
+    const out = await readOpencodeConfig(home, {});
+    expect(out?.activeProvider).toBeNull();
+    expect(out?.activeModel).toBeNull();
+  });
+
+  it('parses opencode.jsonc with line comments', async () => {
+    const home = await makeHome();
+    await writeAuth(home, { openai: { type: 'api', key: 'sk-oa' } });
+    await writeConfig(
+      home,
+      'opencode.jsonc',
+      '// active model\n{\n  "model": "openai/gpt-5" /* block */\n}\n',
+    );
+    const out = await readOpencodeConfig(home, {});
+    expect(out?.activeProvider).toBe('opencode-openai');
+    expect(out?.activeModel).toBe('gpt-5');
+  });
+
+  it('honors XDG_DATA_HOME for auth.json lookup', async () => {
+    const home = await makeHome();
+    const xdgData = join(home, 'xdg-data');
+    await mkdir(join(xdgData, 'opencode'), { recursive: true });
+    await writeFile(
+      join(xdgData, 'opencode', 'auth.json'),
+      JSON.stringify({ openai: { type: 'api', key: 'sk-xdg' } }),
+      'utf8',
+    );
+    const out = await readOpencodeConfig(home, { XDG_DATA_HOME: xdgData });
+    expect(out?.apiKeyMap['opencode-openai']).toBe('sk-xdg');
+  });
+});
