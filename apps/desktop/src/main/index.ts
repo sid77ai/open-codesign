@@ -1021,6 +1021,38 @@ async function scheduleStartupUpdateCheck(): Promise<void> {
 }
 
 void app.whenReady().then(async () => {
+  // Extracted so the outer try/catch AND post-init listeners (whose callbacks
+  // fire outside this block) can route failures through the same boot-fallback
+  // path. Without this, a later createWindow() throw from app.on('activate')
+  // would bypass writeBootErrorSync and leave the user with nothing to attach.
+  const handleBootFailure = (err: unknown, title: string, message: string): void => {
+    let logsDir: string;
+    try {
+      logsDir = app.getPath('logs');
+    } catch {
+      logsDir = app.getPath('temp');
+    }
+    const bootLogPath = writeBootErrorSync({
+      error: err,
+      logsDir,
+      appVersion: app.getVersion(),
+      platform: process.platform,
+      electronVersion: process.versions.electron ?? 'unknown',
+      nodeVersion: process.versions.node,
+    });
+    const choice = showBootDialog(app, dialog, {
+      type: 'error',
+      title,
+      message,
+      detail: `Error: ${err instanceof Error ? err.message : String(err)}\n\nDiagnostic log: ${bootLogPath}`,
+      buttons: ['Copy diagnostic path', 'Open log folder', 'Quit'],
+      defaultId: 2,
+      cancelId: 2,
+    });
+    if (choice === 0) clipboard.writeText(bootLogPath);
+    if (choice === 1) shell.showItemInFolder(bootLogPath);
+  };
+
   try {
     initLogger();
     // Show a blocking dialog if the user launched from the DMG mount. If
@@ -1077,38 +1109,24 @@ void app.whenReady().then(async () => {
     void scheduleStartupUpdateCheck();
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) {
+        try {
+          createWindow();
+        } catch (err) {
+          handleBootFailure(err, 'Cannot reopen window', 'Window failed to open.');
+        }
+      }
     });
   } catch (err) {
     // Last-resort boot-phase handler. Reached when something before
     // `initLogger()` finishes (or during the first few setup calls)
     // throws — our electron-log sink might not exist yet, so write a
     // best-effort sync log and show a native three-button dialog.
-    let logsDir: string;
-    try {
-      logsDir = app.getPath('logs');
-    } catch {
-      logsDir = app.getPath('temp');
-    }
-    const bootLogPath = writeBootErrorSync({
-      error: err,
-      logsDir,
-      appVersion: app.getVersion(),
-      platform: process.platform,
-      electronVersion: process.versions.electron ?? 'unknown',
-      nodeVersion: process.versions.node,
-    });
-    const choice = showBootDialog(app, dialog, {
-      type: 'error',
-      title: 'Open CoDesign failed to start',
-      message: 'A startup error prevented the app from loading.',
-      detail: `Error: ${err instanceof Error ? err.message : String(err)}\n\nDiagnostic log: ${bootLogPath}`,
-      buttons: ['Copy diagnostic path', 'Open log folder', 'Quit'],
-      defaultId: 2,
-      cancelId: 2,
-    });
-    if (choice === 0) clipboard.writeText(bootLogPath);
-    if (choice === 1) shell.showItemInFolder(bootLogPath);
+    handleBootFailure(
+      err,
+      'Open CoDesign failed to start',
+      'A startup error prevented the app from loading.',
+    );
     app.quit();
   }
 });
