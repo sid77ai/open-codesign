@@ -57,6 +57,14 @@ nsis:
   allowToChangeInstallationDirectory: true
 linux:
   icon: resources/icon.png
+  # `executableName` controls the binary name AND the deb/rpm package name.
+  # Without it electron-builder falls back to `productName` ("Open CoDesign"),
+  # which rpmbuild rejects because RPM package names can't contain spaces or
+  # uppercase — the fpm invocation `--name Open CoDesign` gets shell-split
+  # into two args and the generated spec file ends up at "Open CoDesign.spec"
+  # which rpmbuild then refuses to read. Scoped to `linux.` so the macOS
+  # `.app` bundle and Windows `.exe` keep their pretty "Open CoDesign" name.
+  executableName: open-codesign
   # `maintainer`, `vendor`, `synopsis`, and `description` are REQUIRED metadata
   # for deb/rpm. electron-builder falls back to `author@noreply.github.com` and
   # "Unknown" when they're missing, which causes lintian warnings and gets the
@@ -65,11 +73,9 @@ linux:
   maintainer: Open CoDesign Maintainers <maintainers@opencowork.ai>
   vendor: OpenCoworkAI
   synopsis: Prompt-to-design desktop app for HTML prototypes, decks, and marketing assets.
-  description: |
-    Open CoDesign turns natural-language prompts into interactive HTML
-    prototypes, PDF-ready slide decks, and marketing assets. Multi-provider
-    model support (Anthropic, OpenAI, Google Gemini, DeepSeek, local Ollama,
-    any OpenAI-compatible endpoint), BYOK, local-first storage, no telemetry.
+  # Single-line description: fpm passes it through as a shell arg and some
+  # rpmbuild paths choke on embedded newlines even when the arg is quoted.
+  description: Open CoDesign turns natural-language prompts into interactive HTML prototypes, PDF-ready slide decks, and marketing assets. Multi-provider model support (Anthropic, OpenAI, Google Gemini, DeepSeek, local Ollama, any OpenAI-compatible endpoint), BYOK, local-first storage, no telemetry.
   # Hardcode `x64` (not ${arch}) because electron-builder substitutes ${arch}
   # differently per Linux target convention (AppImage → x86_64, deb → amd64,
   # rpm → x86_64). SmartDownload.vue + Homebrew cask + Flatpak manifest all
