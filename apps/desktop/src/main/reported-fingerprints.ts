@@ -10,7 +10,7 @@
  * only touched from the diagnostics IPC handlers.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 export interface ReportedFingerprint {
@@ -57,10 +57,23 @@ export function readReported(filePath: string): ReportedFingerprintsFile {
   }
 }
 
+/**
+ * Write `content` to `path` atomically via a temp file + rename. `renameSync`
+ * is atomic on POSIX and behaves as atomic replacement on Windows since Node
+ * 10, so a crash mid-write leaves either the old file or the new one — never
+ * a truncated blob. Guards against clobbering when two Electron instances
+ * race on the same config file.
+ */
+export function writeAtomic(path: string, content: string): void {
+  const tmp = `${path}.tmp.${process.pid}`;
+  writeFileSync(tmp, content, { encoding: 'utf8', mode: 0o600 });
+  renameSync(tmp, path);
+}
+
 function writeFile(filePath: string, data: ReportedFingerprintsFile): void {
   try {
     mkdirSync(dirname(filePath), { recursive: true });
-    writeFileSync(filePath, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
+    writeAtomic(filePath, JSON.stringify(data, null, 2));
   } catch {
     // Best-effort — a missing dedup file just reverts us to "show the
     // warning never" behavior. Not worth crashing the report flow.

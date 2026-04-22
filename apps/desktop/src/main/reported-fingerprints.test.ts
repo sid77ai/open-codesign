@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { findRecent, readReported, recordReported } from './reported-fingerprints';
+import { findRecent, readReported, recordReported, writeAtomic } from './reported-fingerprints';
 
 function freshDir(): string {
   return mkdtempSync(join(tmpdir(), 'reported-fp-'));
@@ -115,6 +115,34 @@ describe('findRecent', () => {
       );
       const out = findRecent(file, 'abc', 24 * 3_600_000, () => now);
       expect(out).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('writeAtomic', () => {
+  it('creates the file when it does not exist', () => {
+    const dir = freshDir();
+    const file = join(dir, 'fp.json');
+    try {
+      writeAtomic(file, 'hello');
+      expect(existsSync(file)).toBe(true);
+      expect(readFileSync(file, 'utf8')).toBe('hello');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('replaces an existing file without leaving a .tmp sibling', () => {
+    const dir = freshDir();
+    const file = join(dir, 'fp.json');
+    try {
+      writeFileSync(file, 'old');
+      writeAtomic(file, 'new');
+      expect(readFileSync(file, 'utf8')).toBe('new');
+      const leftover = readdirSync(dir).filter((n) => n.includes('.tmp.'));
+      expect(leftover).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
