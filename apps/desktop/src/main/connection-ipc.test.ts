@@ -1,11 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock electron-runtime so importing connection-ipc doesn't require('electron').
+const electronRuntimeMocks = vi.hoisted(() => ({
+  handle: vi.fn(),
+}));
+
 vi.mock('./electron-runtime', () => ({
-  ipcMain: { handle: vi.fn() },
+  ipcMain: { handle: electronRuntimeMocks.handle },
+}));
+
+const onboardingMocks = vi.hoisted(() => ({
+  getCachedConfig: vi.fn(),
+  getApiKeyForProvider: vi.fn(),
+}));
+
+vi.mock('./onboarding-ipc', () => ({
+  getCachedConfig: onboardingMocks.getCachedConfig,
+  getApiKeyForProvider: onboardingMocks.getApiKeyForProvider,
+}));
+
+vi.mock('./codex-oauth-ipc', () => ({
+  getCodexTokenStore: () => ({
+    getValidAccessToken: vi.fn(async () => 'token'),
+  }),
 }));
 
 import { createHash } from 'node:crypto';
+import { hydrateConfig } from '@open-codesign/shared';
 import {
   CONNECTION_FETCH_TIMEOUT_MS,
   _clearModelsCache,
@@ -18,6 +39,7 @@ import {
   getCacheKey,
   normalizeBaseUrl,
   normalizeOllamaBaseUrl,
+  registerConnectionIpc,
   runProviderTest,
 } from './connection-ipc';
 
@@ -545,6 +567,64 @@ describe('models:v1:list-for-provider input validation', () => {
   });
 });
 
+describe('models:v1:list-for-provider discovery modes', () => {
+  beforeEach(() => {
+    electronRuntimeMocks.handle.mockReset();
+    onboardingMocks.getCachedConfig.mockReset();
+    onboardingMocks.getApiKeyForProvider.mockReset();
+  });
+
+  it('manual providers do not hit /models and return a manual-entry hint instead', async () => {
+    onboardingMocks.getCachedConfig.mockReturnValue(
+      hydrateConfig({
+        version: 3,
+        activeProvider: 'manual-proxy',
+        activeModel: 'gpt-5.4',
+        secrets: {},
+        providers: {
+          'manual-proxy': {
+            id: 'manual-proxy',
+            name: 'Manual Proxy',
+            builtin: false,
+            wire: 'openai-chat',
+            baseUrl: 'https://proxy.example.com/v1',
+            defaultModel: 'gpt-5.4',
+            capabilities: {
+              supportsModelsEndpoint: false,
+              modelDiscoveryMode: 'manual',
+            },
+          },
+        },
+      }),
+    );
+
+    const originalFetch = globalThis.fetch;
+    const fetchSpy = vi.fn();
+    (globalThis as { fetch: typeof fetch }).fetch = fetchSpy as unknown as typeof fetch;
+
+    try {
+      registerConnectionIpc();
+      const handler = electronRuntimeMocks.handle.mock.calls.find(
+        (call) => call[0] === 'models:v1:list-for-provider',
+      )?.[1] as ((event: unknown, raw: unknown) => Promise<ModelsListResponse>) | undefined;
+      expect(handler).toBeDefined();
+
+      const result = await handler?.({}, 'manual-proxy');
+      expect(result).toMatchObject({
+        ok: false,
+        code: 'HTTP',
+      });
+      if (result && !result.ok) {
+        expect(result.message).toContain('/models');
+        expect(result.hint).toContain('manual');
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      (globalThis as { fetch: typeof fetch }).fetch = originalFetch;
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // normalizeBaseUrl
 // ---------------------------------------------------------------------------
@@ -1041,7 +1121,7 @@ describe('runProviderTest degrade-probe (issue #179)', () => {
     }
   });
 
-  it('openai-responses: /models 404 + /responses 404 → preserves original 404 (no /chat/completions false-positive)', async () => {
+  it('openai-responses: /models 404 + /responses 404 → prevents "test passes but actual invocation fails" false-positive', async () => {
     // Regression: the previous implementation probed /chat/completions for
     // every OpenAI-compat wire. A gateway that only implements /chat/completions
     // would then report the connection healthy even though real inference (on
@@ -1065,9 +1145,147 @@ describe('runProviderTest degrade-probe (issue #179)', () => {
       if (!res.ok) {
         expect(res.code).toBe('404');
         expect(res.message).toBe('HTTP 404');
+        expect(res.diagnostics?.strategy).toBe('models_then_inference');
+        expect(res.diagnostics?.attemptedEndpoints.some((url) => url.endsWith('/models'))).toBe(
+          true,
+        );
+        expect(res.diagnostics?.attemptedEndpoints.some((url) => url.endsWith('/responses'))).toBe(
+          true,
+        );
       }
       // /chat/completions must NOT have been probed for an openai-responses wire.
       expect(calls.some((c) => c.url.endsWith('/chat/completions'))).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it('supportsModelsEndpoint:false fixes "test fails but actual invocation succeeds" by probing inference directly', async () => {
+    const { calls, restore } = installFakeFetch((url) => {
+      if (url.endsWith('/chat/completions')) return { status: 200, body: { id: 'probe' } };
+      return { status: 404 };
+    });
+    try {
+      const res = await runProviderTest({
+        provider: 'no-models-gateway',
+        wire: 'openai-chat',
+        apiKey: 'sk-test',
+        baseUrl: 'https://gateway.example.com/v1',
+        capabilities: {
+          supportsKeyless: false,
+          supportsModelsEndpoint: false,
+          supportsChatCompletions: true,
+          supportsResponsesApi: false,
+          supportsSystemRole: true,
+          supportsDeveloperRole: false,
+          supportsReasoning: false,
+          supportsToolCalling: true,
+          requiresClaudeCodeIdentity: false,
+          modelDiscoveryMode: 'manual',
+        },
+      });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.probeMethod).toBe('chat_completion_degraded');
+        expect(res.diagnostics?.strategy).toBe('inference_only');
+        expect(res.diagnostics?.capabilitySummary?.supportsModelsEndpoint).toBe(false);
+        expect(res.diagnostics?.attemptedEndpoints).toEqual([
+          'https://gateway.example.com/v1/chat/completions',
+        ]);
+        expect(res.diagnostics?.skippedEndpoints).toEqual([
+          'https://gateway.example.com/v1/models',
+        ]);
+      }
+      // Must NOT have called /models
+      expect(calls.some((c) => c.url.endsWith('/models'))).toBe(false);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.url).toMatch(/\/chat\/completions$/);
+    } finally {
+      restore();
+    }
+  });
+
+  it('supportsChatCompletions:false blocks degrade-probe and surfaces unsupported error', async () => {
+    const { calls, restore } = installFakeFetch((url) => {
+      if (url.endsWith('/models')) return { status: 404 };
+      if (url.endsWith('/chat/completions')) return { status: 200, body: { id: 'probe' } };
+      return { status: 500 };
+    });
+    try {
+      const res = await runProviderTest({
+        provider: 'responses-only-gateway',
+        wire: 'openai-chat',
+        apiKey: 'sk-test',
+        baseUrl: 'https://gateway.example.com/v1',
+        capabilities: {
+          supportsKeyless: false,
+          supportsModelsEndpoint: true,
+          supportsChatCompletions: false,
+          supportsResponsesApi: true,
+          supportsSystemRole: false,
+          supportsDeveloperRole: true,
+          supportsReasoning: true,
+          supportsToolCalling: true,
+          requiresClaudeCodeIdentity: false,
+          modelDiscoveryMode: 'manual',
+        },
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe('NETWORK');
+        expect(res.message).toContain('Chat Completions API');
+        expect(res.diagnostics?.strategy).toBe('models_then_inference');
+        expect(res.diagnostics?.capabilitySummary?.supportsChatCompletions).toBe(false);
+        expect(res.diagnostics?.skippedEndpoints).toEqual([
+          'https://gateway.example.com/v1/chat/completions',
+        ]);
+      }
+      // /models was probed and 404'd, but /chat/completions must NOT be called.
+      expect(calls.some((c) => c.url.endsWith('/models'))).toBe(true);
+      expect(calls.some((c) => c.url.endsWith('/chat/completions'))).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it('supportsResponsesApi:false blocks degrade-probe for openai-responses wire', async () => {
+    const { calls, restore } = installFakeFetch((url) => {
+      if (url.endsWith('/models')) return { status: 404 };
+      if (url.endsWith('/responses')) return { status: 200, body: { ok: true } };
+      return { status: 500 };
+    });
+    try {
+      const res = await runProviderTest({
+        provider: 'chat-only-gateway',
+        wire: 'openai-responses',
+        apiKey: 'sk-test',
+        baseUrl: 'https://gateway.example.com/v1',
+        capabilities: {
+          supportsKeyless: false,
+          supportsModelsEndpoint: true,
+          supportsChatCompletions: true,
+          supportsResponsesApi: false,
+          supportsSystemRole: true,
+          supportsDeveloperRole: false,
+          supportsReasoning: false,
+          supportsToolCalling: true,
+          requiresClaudeCodeIdentity: false,
+          modelDiscoveryMode: 'manual',
+        },
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe('NETWORK');
+        expect(res.message).toContain('Responses API');
+        expect(res.diagnostics?.strategy).toBe('models_then_inference');
+        expect(res.diagnostics?.capabilitySummary?.supportsResponsesApi).toBe(false);
+        expect(res.diagnostics?.skippedEndpoints).toEqual([
+          'https://gateway.example.com/v1/responses',
+        ]);
+      }
+      // /models was probed and 404'd, but /responses must NOT be called.
+      expect(calls.some((c) => c.url.endsWith('/models'))).toBe(true);
+      expect(calls.some((c) => c.url.endsWith('/responses'))).toBe(false);
     } finally {
       restore();
     }

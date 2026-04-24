@@ -372,6 +372,106 @@ describe('generateViaAgent() — Phase 1 pass-through', () => {
     expect(model?.baseUrl).toBe('https://proxy.example.com/v1');
   });
 
+  it('respects explicit reasoning opt-out for imported openai-chat providers on official OpenAI hosts', async () => {
+    scriptedAgent = { assistantText: RESPONSE_WITH_ARTIFACT };
+    await generateViaAgent({
+      prompt: 'design a landing page',
+      history: [],
+      model: { provider: 'opencode-openai', modelId: 'gpt-5.4' },
+      apiKey: 'sk-test',
+      wire: 'openai-chat',
+      baseUrl: 'https://api.openai.com/v1',
+      capabilities: {
+        supportsReasoning: false,
+      },
+    });
+
+    const initialState = agentCalls[0]?.options.initialState as
+      | {
+          model?: { reasoning?: boolean };
+          thinkingLevel?: string;
+        }
+      | undefined;
+    expect(initialState?.model?.reasoning).toBe(false);
+    expect(initialState?.thinkingLevel).toBe('off');
+  });
+
+  it('preserves official OpenAI reasoning heuristics for builtin providers in agent runtime', async () => {
+    scriptedAgent = { assistantText: RESPONSE_WITH_ARTIFACT };
+    await generateViaAgent({
+      prompt: 'design a landing page',
+      history: [],
+      model: { provider: 'openai', modelId: 'gpt-5.4' },
+      apiKey: 'sk-test',
+      wire: 'openai-chat',
+      baseUrl: 'https://api.openai.com/v1',
+      capabilities: {
+        supportsReasoning: false,
+      },
+    });
+
+    const initialState = agentCalls[0]?.options.initialState as
+      | {
+          model?: { reasoning?: boolean };
+          thinkingLevel?: string;
+        }
+      | undefined;
+    expect(initialState?.model?.reasoning).toBe(true);
+    expect(initialState?.thinkingLevel).toBe('high');
+  });
+
+  it('preserves official OpenAI reasoning heuristics for imported providers when explicitCapabilities omit supportsReasoning', async () => {
+    scriptedAgent = { assistantText: RESPONSE_WITH_ARTIFACT };
+    await generateViaAgent({
+      prompt: 'design a landing page',
+      history: [],
+      model: { provider: 'codex-openai', modelId: 'gpt-5.4' },
+      apiKey: 'sk-test',
+      wire: 'openai-chat',
+      baseUrl: 'https://api.openai.com/v1',
+      capabilities: {
+        supportsReasoning: false,
+        supportsModelsEndpoint: true,
+      },
+      explicitCapabilities: {
+        supportsModelsEndpoint: true,
+      },
+    });
+
+    const initialState = agentCalls[0]?.options.initialState as
+      | {
+          model?: { reasoning?: boolean };
+          thinkingLevel?: string;
+        }
+      | undefined;
+    expect(initialState?.model?.reasoning).toBe(true);
+    expect(initialState?.thinkingLevel).toBe('high');
+  });
+
+  it('uses resolved builtin baseUrl when setting agent thinkingLevel', async () => {
+    scriptedAgent = { assistantText: RESPONSE_WITH_ARTIFACT };
+    await generateViaAgent({
+      prompt: 'design a landing page',
+      history: [],
+      model: { provider: 'openai', modelId: 'gpt-5.4' },
+      apiKey: 'sk-test',
+      wire: 'openai-chat',
+      capabilities: {
+        supportsReasoning: false,
+      },
+    });
+
+    const initialState = agentCalls[0]?.options.initialState as
+      | {
+          model?: { baseUrl?: string; reasoning?: boolean };
+          thinkingLevel?: string;
+        }
+      | undefined;
+    expect(initialState?.model?.baseUrl).toBe('https://api.openai.com/v1');
+    expect(initialState?.model?.reasoning).toBe(true);
+    expect(initialState?.thinkingLevel).toBe('high');
+  });
+
   it('extracts artifact and returns usage mapped from pi-ai assistant usage', async () => {
     scriptedAgent = {
       assistantText: RESPONSE_WITH_ARTIFACT,
@@ -643,6 +743,23 @@ describe('generateViaAgent() — first-turn retry', () => {
         history: [],
         model: MODEL,
         apiKey: 'sk-test',
+      }),
+    ).rejects.toBeTruthy();
+    expect(agentCalls[0]?.prompts.length).toBe(1);
+  });
+
+  it('does not retry anthropic 5xx "not implemented" errors when wire is anthropic', async () => {
+    scriptedAgent = {
+      assistantText: '',
+      promptThrows: new HttpError('500 not implemented: messages api missing', 500),
+    };
+    await expect(
+      generateViaAgent({
+        prompt: 'design a dashboard',
+        history: [],
+        model: MODEL,
+        apiKey: 'sk-test',
+        wire: 'anthropic',
       }),
     ).rejects.toBeTruthy();
     expect(agentCalls[0]?.prompts.length).toBe(1);

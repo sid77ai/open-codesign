@@ -61,11 +61,15 @@ describe('connection credential resolution via envKey fallback', () => {
     const result = await resolveCredentialsForProvider('claude-shell');
 
     expect(getApiKeyForProviderMock).toHaveBeenCalledWith('claude-shell');
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       provider: 'claude-shell',
       wire: 'anthropic',
       apiKey: 'sk-from-env',
       baseUrl: 'https://api.anthropic.com',
+      capabilities: {
+        supportsReasoning: true,
+        supportsModelsEndpoint: true,
+      },
     });
   });
 
@@ -76,11 +80,15 @@ describe('connection credential resolution via envKey fallback', () => {
     const result = await resolveActiveCredentials();
 
     expect(getApiKeyForProviderMock).toHaveBeenCalledWith('claude-shell');
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       provider: 'claude-shell',
       wire: 'anthropic',
       apiKey: 'sk-from-env',
       baseUrl: 'https://api.anthropic.com',
+      capabilities: {
+        supportsReasoning: true,
+        supportsModelsEndpoint: true,
+      },
     });
   });
 });

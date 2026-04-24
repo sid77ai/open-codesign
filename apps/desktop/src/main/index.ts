@@ -884,6 +884,8 @@ function registerIpcHandlers(db: Database | null): void {
             ...(baseUrl !== undefined ? { baseUrl } : {}),
             wire: active.wire,
             ...(active.httpHeaders !== undefined ? { httpHeaders: active.httpHeaders } : {}),
+            capabilities: active.capabilities,
+            explicitCapabilities: active.explicitCapabilities,
             ...(allowKeyless ? { allowKeyless: true } : {}),
             signal: controller.signal,
             logger: coreLogger,
@@ -1022,6 +1024,8 @@ function registerIpcHandlers(db: Database | null): void {
             ...(baseUrl !== undefined ? { baseUrl } : {}),
             wire: active.wire,
             ...(active.httpHeaders !== undefined ? { httpHeaders: active.httpHeaders } : {}),
+            capabilities: active.capabilities,
+            explicitCapabilities: active.explicitCapabilities,
             ...(allowKeyless ? { allowKeyless: true } : {}),
             signal: controller.signal,
           },
@@ -1118,6 +1122,8 @@ function registerIpcHandlers(db: Database | null): void {
           ...(baseUrl !== undefined ? { baseUrl } : {}),
           wire: active.wire,
           ...(active.httpHeaders !== undefined ? { httpHeaders: active.httpHeaders } : {}),
+          capabilities: active.capabilities,
+          explicitCapabilities: active.explicitCapabilities,
           ...(allowKeyless ? { allowKeyless: true } : {}),
         });
         logIpc.info('applyComment.ok', {
@@ -1173,6 +1179,8 @@ function registerIpcHandlers(db: Database | null): void {
           ...(baseUrl !== undefined ? { baseUrl } : {}),
           wire: active.wire,
           ...(active.httpHeaders !== undefined ? { httpHeaders: active.httpHeaders } : {}),
+          capabilities: active.capabilities,
+          explicitCapabilities: active.explicitCapabilities,
           ...(allowKeyless ? { allowKeyless: true } : {}),
           logger: titleLogger,
         });

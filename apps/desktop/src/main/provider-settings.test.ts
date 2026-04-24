@@ -410,6 +410,7 @@ describe('resolveActiveModel', () => {
 
     expect(result.model).toEqual({ provider: 'anthropic', modelId: 'claude-sonnet-4-6' });
     expect(result.allowKeyless).toBe(false);
+    expect(result.capabilities.supportsReasoning).toBe(true);
   });
 
   it('allows active imported Codex providers without a stored secret', () => {
@@ -463,6 +464,52 @@ describe('resolveActiveModel', () => {
     expect(result.model).toEqual({ provider: 'codex-custom', modelId: 'gpt-5.4' });
     expect(result.allowKeyless).toBe(false);
   });
+
+  it('returns resolved capabilities for the active provider', () => {
+    const cfg = makeCfg({
+      provider: 'openai',
+      modelPrimary: 'gpt-4o',
+      secrets: {
+        openai: { ciphertext: 'enc-oai' },
+      },
+    });
+
+    const result = resolveActiveModel(cfg, { provider: 'openai', modelId: 'gpt-4o' });
+
+    expect(result.capabilities.supportsChatCompletions).toBe(true);
+    expect(result.capabilities.supportsResponsesApi).toBe(false);
+    expect(result.capabilities.supportsSystemRole).toBe(true);
+    expect(result.capabilities.supportsToolCalling).toBe(true);
+    expect(result.capabilities.supportsKeyless).toBe(false);
+    expect(result.capabilities.supportsModelsEndpoint).toBe(true);
+  });
+
+  it('preserves explicitCapabilities separately from resolved defaults', () => {
+    const cfg = makeCfg({
+      provider: 'imported-openai',
+      modelPrimary: 'gpt-5.4',
+      providers: {
+        'imported-openai': {
+          id: 'imported-openai',
+          name: 'Imported OpenAI',
+          builtin: false,
+          wire: 'openai-chat',
+          baseUrl: 'https://api.openai.com/v1',
+          defaultModel: 'gpt-5.4',
+          capabilities: {
+            supportsModelsEndpoint: true,
+          },
+        },
+      },
+    });
+
+    const result = resolveActiveModel(cfg, { provider: 'imported-openai', modelId: 'gpt-5.4' });
+
+    expect(result.capabilities.supportsReasoning).toBe(false);
+    expect(result.explicitCapabilities).toEqual({
+      supportsModelsEndpoint: true,
+    });
+  });
 });
 
 describe('resolveProviderConfig', () => {
@@ -482,6 +529,10 @@ describe('resolveProviderConfig', () => {
       baseUrl: 'https://api.duckcoding.ai/v1',
       wire: 'openai-chat',
       allowKeyless: false,
+      capabilities: {
+        supportsChatCompletions: true,
+        supportsResponsesApi: false,
+      },
     });
   });
 
@@ -509,6 +560,10 @@ describe('resolveProviderConfig', () => {
       baseUrl: 'https://proxy.example.com/v1',
       wire: 'openai-responses',
       allowKeyless: true,
+      capabilities: {
+        supportsResponsesApi: true,
+        supportsModelsEndpoint: true,
+      },
     });
   });
 
@@ -537,6 +592,37 @@ describe('resolveProviderConfig', () => {
       baseUrl: 'https://api.anthropic.com',
       wire: 'anthropic',
       allowKeyless: false,
+      capabilities: {
+        supportsReasoning: true,
+        supportsToolCalling: true,
+      },
+    });
+  });
+
+  it('returns explicitCapabilities for imported providers without materializing omitted flags', () => {
+    const cfg = makeCfg({
+      provider: 'imported-openrouter',
+      modelPrimary: 'openai/o3-mini',
+      providers: {
+        'imported-openrouter': {
+          id: 'imported-openrouter',
+          name: 'Imported OpenRouter',
+          builtin: false,
+          wire: 'openai-chat',
+          baseUrl: 'https://openrouter.ai/api/v1',
+          defaultModel: 'openai/o3-mini',
+          capabilities: {
+            supportsModelsEndpoint: true,
+          },
+        },
+      },
+    });
+
+    const result = resolveProviderConfig(cfg, 'imported-openrouter');
+
+    expect(result.capabilities.supportsReasoning).toBe(false);
+    expect(result.explicitCapabilities).toEqual({
+      supportsModelsEndpoint: true,
     });
   });
 

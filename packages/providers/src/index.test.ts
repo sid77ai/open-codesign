@@ -198,6 +198,192 @@ describe('complete', () => {
     expect(result.content).toBe('ok');
   });
 
+  it('overrides registry reasoning for builtin OpenAI rows repointed to a proxy', async () => {
+    getModelMock.mockReturnValue({
+      id: 'gpt-5.4',
+      api: 'openai-completions',
+      provider: 'openai',
+      reasoning: true,
+    });
+    completeSimpleMock.mockImplementationOnce(async (piModel) => {
+      expect(piModel.reasoning).toBe(false);
+      return {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'ok' }],
+        api: 'openai-completions',
+        provider: 'openai',
+        model: 'gpt-5.4',
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: 'stop',
+        timestamp: Date.now(),
+      };
+    });
+
+    await complete({ provider: 'openai', modelId: 'gpt-5.4' }, [{ role: 'user', content: 'hi' }], {
+      apiKey: 'sk-test',
+      wire: 'openai-chat',
+      baseUrl: 'https://api.duckcoding.ai/v1',
+      capabilities: { supportsReasoning: false },
+    });
+  });
+
+  it('preserves official OpenAI reasoning heuristics even when registry metadata says otherwise', async () => {
+    getModelMock.mockReturnValue({
+      id: 'gpt-5.4',
+      api: 'openai-completions',
+      provider: 'openai',
+      reasoning: false,
+    });
+    completeSimpleMock.mockImplementationOnce(async (piModel) => {
+      expect(piModel.reasoning).toBe(true);
+      return {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'ok' }],
+        api: 'openai-completions',
+        provider: 'openai',
+        model: 'gpt-5.4',
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: 'stop',
+        timestamp: Date.now(),
+      };
+    });
+
+    await complete({ provider: 'openai', modelId: 'gpt-5.4' }, [{ role: 'user', content: 'hi' }], {
+      apiKey: 'sk-test',
+      wire: 'openai-chat',
+      baseUrl: 'https://api.openai.com/v1',
+      capabilities: { supportsReasoning: false },
+    });
+  });
+
+  it('uses registry baseUrl when preserving official OpenAI heuristics for registered models', async () => {
+    getModelMock.mockReturnValue({
+      id: 'gpt-5.4',
+      api: 'openai-completions',
+      provider: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      reasoning: false,
+    });
+    completeSimpleMock.mockImplementationOnce(async (piModel) => {
+      expect(piModel.reasoning).toBe(true);
+      return {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'ok' }],
+        api: 'openai-completions',
+        provider: 'openai',
+        model: 'gpt-5.4',
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: 'stop',
+        timestamp: Date.now(),
+      };
+    });
+
+    await complete({ provider: 'openai', modelId: 'gpt-5.4' }, [{ role: 'user', content: 'hi' }], {
+      apiKey: 'sk-test',
+      wire: 'openai-chat',
+      capabilities: { supportsReasoning: false },
+    });
+  });
+
+  it('prefers explicitCapabilities over resolved capabilities for imported official providers', async () => {
+    getModelMock.mockReturnValue({
+      id: 'gpt-5.4',
+      api: 'openai-completions',
+      provider: 'codex-openai',
+      reasoning: false,
+    });
+    completeSimpleMock.mockImplementationOnce(async (piModel) => {
+      expect(piModel.reasoning).toBe(true);
+      return {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'ok' }],
+        api: 'openai-completions',
+        provider: 'codex-openai',
+        model: 'gpt-5.4',
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: 'stop',
+        timestamp: Date.now(),
+      };
+    });
+
+    await complete(
+      { provider: 'codex-openai', modelId: 'gpt-5.4' },
+      [{ role: 'user', content: 'hi' }],
+      {
+        apiKey: 'sk-test',
+        wire: 'openai-chat',
+        baseUrl: 'https://api.openai.com/v1',
+        capabilities: { supportsReasoning: false, supportsModelsEndpoint: true },
+        explicitCapabilities: { supportsModelsEndpoint: true },
+      },
+    );
+  });
+
+  it('uses explicitCapabilities when synthesizing imported official providers', async () => {
+    getModelMock.mockReturnValue(undefined);
+    completeSimpleMock.mockImplementationOnce(async (piModel) => {
+      expect(piModel.reasoning).toBe(true);
+      expect(piModel.baseUrl).toBe('https://api.openai.com/v1');
+      return {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'ok' }],
+        api: 'openai-completions',
+        provider: 'codex-openai',
+        model: 'gpt-5.4',
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: 'stop',
+        timestamp: Date.now(),
+      };
+    });
+
+    await complete(
+      { provider: 'codex-openai', modelId: 'gpt-5.4' },
+      [{ role: 'user', content: 'hi' }],
+      {
+        apiKey: 'sk-test',
+        wire: 'openai-chat',
+        baseUrl: 'https://api.openai.com/v1',
+        capabilities: { supportsReasoning: false, supportsModelsEndpoint: true },
+        explicitCapabilities: { supportsModelsEndpoint: true },
+      },
+    );
+  });
+
   it('appends image inputs to the final user turn for openai-codex-responses', async () => {
     getModelMock.mockReturnValue({
       id: 'gpt-5.4',
@@ -554,6 +740,94 @@ describe('inferReasoning', () => {
 
   it('returns false when wire is undefined', () => {
     expect(inferReasoning(undefined, 'gpt-4o', 'https://api.openai.com/v1')).toBe(false);
+  });
+
+  it('prefers explicit capability profile over heuristic reasoning inference on custom gateways', () => {
+    expect(
+      inferReasoning('openai-chat', 'gpt-5.4', 'https://proxy.example/v1', {
+        supportsReasoning: false,
+      }),
+    ).toBe(false);
+    expect(
+      inferReasoning('openai-chat', 'gpt-4o', 'https://proxy.example/v1', {
+        supportsReasoning: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('preserves official openai-chat heuristics when resolved capabilities default to supportsReasoning:false', () => {
+    expect(
+      inferReasoning(
+        'openai-chat',
+        'gpt-5.4',
+        'https://api.openai.com/v1',
+        {
+          supportsReasoning: false,
+        },
+        'openai',
+      ),
+    ).toBe(true);
+    expect(
+      inferReasoning(
+        'openai-chat',
+        'openai/o3-mini',
+        'https://openrouter.ai/api/v1',
+        {
+          supportsReasoning: false,
+        },
+        'openrouter',
+      ),
+    ).toBe(true);
+  });
+
+  it('respects explicit reasoning opt-out for imported providers even on official base URLs', () => {
+    expect(
+      inferReasoning(
+        'openai-chat',
+        'gpt-5.4',
+        'https://api.openai.com/v1',
+        {
+          supportsReasoning: false,
+        },
+        'custom-openai',
+      ),
+    ).toBe(false);
+    expect(
+      inferReasoning(
+        'openai-chat',
+        'openai/o3-mini',
+        'https://openrouter.ai/api/v1',
+        {
+          supportsReasoning: false,
+        },
+        'custom-openrouter',
+      ),
+    ).toBe(false);
+  });
+
+  it('does not preserve builtin openai/openrouter heuristics after repointing baseUrl to a proxy', () => {
+    expect(
+      inferReasoning(
+        'openai-chat',
+        'gpt-5.4',
+        'https://api.duckcoding.ai/v1',
+        {
+          supportsReasoning: false,
+        },
+        'openai',
+      ),
+    ).toBe(false);
+    expect(
+      inferReasoning(
+        'openai-chat',
+        'openai/o3-mini',
+        'https://my-openrouter-proxy.example/v1',
+        {
+          supportsReasoning: false,
+        },
+        'openrouter',
+      ),
+    ).toBe(false);
   });
 
   it('returns true for third-party openai-chat with reasoning model ID (issue #188)', () => {

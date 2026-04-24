@@ -6,6 +6,7 @@ import {
   ERROR_CODES,
   type ModelRef,
   PROVIDER_SHORTLIST,
+  type ProviderCapabilities,
   type ProviderEntry,
   type ReasoningLevel,
   type WireApi,
@@ -209,6 +210,8 @@ export interface ActiveModelResolution {
   queryParams: Record<string, string> | undefined;
   reasoningLevel: ReasoningLevel | undefined;
   allowKeyless: boolean;
+  capabilities: Required<ProviderCapabilities>;
+  explicitCapabilities: ProviderCapabilities | undefined;
   /** True when the renderer-supplied hint provider didn't match the canonical active. */
   overridden: boolean;
 }
@@ -227,6 +230,8 @@ export interface ProviderConfigResolution {
   queryParams: Record<string, string> | undefined;
   reasoningLevel: ReasoningLevel | undefined;
   allowKeyless: boolean;
+  capabilities: Required<ProviderCapabilities>;
+  explicitCapabilities: ProviderCapabilities | undefined;
 }
 
 export function resolveProviderConfig(cfg: Config, providerId: string): ProviderConfigResolution {
@@ -238,6 +243,7 @@ export function resolveProviderConfig(cfg: Config, providerId: string): Provider
     );
   }
   const allowKeyless = isKeylessProviderAllowed(providerId, entry);
+  const capabilities = resolveProviderCapabilities(providerId, entry);
   return {
     provider: providerId,
     defaultModel: entry.defaultModel,
@@ -247,6 +253,8 @@ export function resolveProviderConfig(cfg: Config, providerId: string): Provider
     queryParams: entry.queryParams,
     reasoningLevel: entry.reasoningLevel,
     allowKeyless,
+    capabilities,
+    explicitCapabilities: entry.capabilities,
   };
 }
 
@@ -266,6 +274,8 @@ export function resolveActiveModel(
     queryParams: resolved.queryParams,
     reasoningLevel: resolved.reasoningLevel,
     allowKeyless: resolved.allowKeyless,
+    capabilities: resolved.capabilities,
+    explicitCapabilities: resolved.explicitCapabilities,
     overridden,
   };
 }

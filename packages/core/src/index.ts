@@ -6,12 +6,14 @@ import {
   completeWithRetry,
   filterActive,
   formatSkillsForPrompt,
+  inferReasoning,
 } from '@open-codesign/providers';
 import type {
   Artifact,
   ChatMessage,
   LoadedSkill,
   ModelRef,
+  ProviderCapabilities,
   SelectedElement,
   StoredDesignSystem,
   WireApi,
@@ -97,6 +99,10 @@ export interface GenerateInput {
   wire?: WireApi | undefined;
   /** v3 extra HTTP headers merged into the outbound request (gateway auth). */
   httpHeaders?: Record<string, string> | undefined;
+  /** Explicit provider capability profile resolved by desktop main. */
+  capabilities?: ProviderCapabilities | undefined;
+  /** Raw capability overrides explicitly stored on the provider entry. */
+  explicitCapabilities?: ProviderCapabilities | undefined;
   allowKeyless?: boolean | undefined;
   /**
    * Per-call reasoning level override. Typically sourced from
@@ -128,6 +134,8 @@ export interface ApplyCommentInput {
   baseUrl?: string | undefined;
   wire?: WireApi | undefined;
   httpHeaders?: Record<string, string> | undefined;
+  capabilities?: ProviderCapabilities | undefined;
+  explicitCapabilities?: ProviderCapabilities | undefined;
   allowKeyless?: boolean | undefined;
   /** @see GenerateInput.reasoningLevel */
   reasoningLevel?: ReasoningLevel | undefined;
@@ -164,6 +172,8 @@ interface ModelRunInput {
   baseUrl?: string | undefined;
   wire?: WireApi | undefined;
   httpHeaders?: Record<string, string> | undefined;
+  capabilities?: ProviderCapabilities | undefined;
+  explicitCapabilities?: ProviderCapabilities | undefined;
   allowKeyless?: boolean | undefined;
   reasoningLevel?: ReasoningLevel | undefined;
   signal?: AbortSignal | undefined;
@@ -351,7 +361,19 @@ async function runModel(input: ModelRunInput): Promise<GenerateOutput> {
   log.info(`[${scope}] step=send_request`, ctx);
   const sendStart = Date.now();
   let result: GenerateResult;
-  let reasoning = input.reasoningLevel ?? reasoningForModel(input.model, input.baseUrl);
+  const inferredReasoning =
+    input.wire === undefined && input.capabilities === undefined
+      ? true
+      : inferReasoning(
+          input.wire,
+          input.model.modelId,
+          input.baseUrl,
+          input.explicitCapabilities ?? input.capabilities,
+          input.model.provider,
+        );
+  let reasoning =
+    input.reasoningLevel ??
+    (inferredReasoning ? reasoningForModel(input.model, input.baseUrl) : undefined);
   // Self-healing: if the upstream rejects on reasoning mismatch, flip the
   // knob once and retry. Handles new reasoning-mandatory models (and
   // not-supported models) without code changes.
@@ -365,6 +387,10 @@ async function runModel(input: ModelRunInput): Promise<GenerateOutput> {
           ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
           ...(input.wire !== undefined ? { wire: input.wire } : {}),
           ...(input.httpHeaders !== undefined ? { httpHeaders: input.httpHeaders } : {}),
+          ...(input.capabilities !== undefined ? { capabilities: input.capabilities } : {}),
+          ...(input.explicitCapabilities !== undefined
+            ? { explicitCapabilities: input.explicitCapabilities }
+            : {}),
           ...(input.userImages !== undefined ? { userImages: input.userImages } : {}),
           ...(input.allowKeyless === true ? { allowKeyless: true } : {}),
           ...(input.signal !== undefined ? { signal: input.signal } : {}),
@@ -577,6 +603,18 @@ export function reasoningForModel(
   model: ModelRef,
   baseUrl?: string | undefined,
 ): ReasoningLevel | undefined {
+  const isOfficialOpenAI =
+    baseUrl !== undefined && /(^|\/\/)api\.openai\.com\/v1($|[/?#])/i.test(baseUrl);
+  const isOfficialOpenRouter =
+    baseUrl !== undefined && /(^|\/\/)openrouter\.ai\/api\/v1($|[/?#])/i.test(baseUrl);
+
+  if (isOfficialOpenAI) {
+    return OPENAI_REASONING_MODEL_RE.test(model.modelId) ? 'high' : undefined;
+  }
+  if (isOfficialOpenRouter) {
+    return OPENROUTER_REASONING_MODEL_RE.test(model.modelId) ? 'medium' : undefined;
+  }
+
   // Proxy detection: when the provider id is 'anthropic' but baseUrl points
   // somewhere other than api.anthropic.com, we're talking to a Claude Code-
   // style proxy. Those commonly gate reasoning by plan and consumer-tier
@@ -674,6 +712,8 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
     baseUrl: input.baseUrl,
     wire: input.wire,
     httpHeaders: input.httpHeaders,
+    capabilities: input.capabilities,
+    explicitCapabilities: input.explicitCapabilities,
     allowKeyless: input.allowKeyless,
     reasoningLevel: input.reasoningLevel,
     signal: input.signal,
@@ -728,6 +768,8 @@ export async function applyComment(input: ApplyCommentInput): Promise<GenerateOu
     baseUrl: input.baseUrl,
     wire: input.wire,
     httpHeaders: input.httpHeaders,
+    capabilities: input.capabilities,
+    explicitCapabilities: input.explicitCapabilities,
     allowKeyless: input.allowKeyless,
     reasoningLevel: input.reasoningLevel,
     signal: input.signal,
@@ -753,6 +795,8 @@ export interface GenerateTitleInput {
   baseUrl?: string | undefined;
   wire?: WireApi | undefined;
   httpHeaders?: Record<string, string> | undefined;
+  capabilities?: ProviderCapabilities | undefined;
+  explicitCapabilities?: ProviderCapabilities | undefined;
   allowKeyless?: boolean | undefined;
   signal?: AbortSignal | undefined;
   logger?: CoreLogger | undefined;
@@ -809,6 +853,10 @@ export async function generateTitle(input: GenerateTitleInput): Promise<string> 
         ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
         ...(input.wire !== undefined ? { wire: input.wire } : {}),
         ...(input.httpHeaders !== undefined ? { httpHeaders: input.httpHeaders } : {}),
+        ...(input.capabilities !== undefined ? { capabilities: input.capabilities } : {}),
+        ...(input.explicitCapabilities !== undefined
+          ? { explicitCapabilities: input.explicitCapabilities }
+          : {}),
         ...(input.allowKeyless === true ? { allowKeyless: true } : {}),
         ...(input.signal !== undefined ? { signal: input.signal } : {}),
         maxTokens: 200,

@@ -22,13 +22,18 @@
  *  unless the model ID matches the known-reasoning heuristic.
  */
 
-import type { WireApi } from '@open-codesign/shared';
+import type { ProviderCapabilities, WireApi } from '@open-codesign/shared';
 
 // ── Reasoning policy ──────────────────────────────────────────────────────────
 
 function isOpenAIOfficial(baseUrl: string | undefined): boolean {
   if (!baseUrl) return false;
   return /^https:\/\/api\.openai\.com(\/|$)/.test(baseUrl);
+}
+
+function isOpenRouterOfficial(baseUrl: string | undefined): boolean {
+  if (!baseUrl) return false;
+  return /^https:\/\/openrouter\.ai\/api\/v1(\/|$)/.test(baseUrl);
 }
 
 function isOfficialOpenAIReasoningModelId(modelId: string): boolean {
@@ -71,7 +76,20 @@ export function inferReasoning(
   wire: WireApi | undefined,
   modelId: string,
   baseUrl: string | undefined,
+  capabilities?: ProviderCapabilities,
+  providerId?: string,
 ): boolean {
+  if (capabilities?.supportsReasoning === true) {
+    return true;
+  }
+  const preserveChatHeuristics =
+    wire === 'openai-chat' &&
+    ((providerId === 'openai' && isOpenAIOfficial(baseUrl)) ||
+      (providerId === 'openrouter' && isOpenRouterOfficial(baseUrl)));
+  if (capabilities?.supportsReasoning === false && !preserveChatHeuristics) {
+    return false;
+  }
+
   switch (wire) {
     case 'anthropic':
       return true;

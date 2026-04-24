@@ -11,6 +11,7 @@ import {
   CodesignError,
   ERROR_CODES,
   type ModelRef,
+  type ProviderCapabilities,
   type WireApi,
 } from '@open-codesign/shared';
 import {
@@ -60,6 +61,16 @@ export interface GenerateOptions {
    * placeholder while auth is supplied by `httpHeaders` or by the gateway.
    */
   allowKeyless?: boolean;
+  /**
+   * Explicit capability profile for the provider. When set, overrides
+   * heuristic inference (e.g. reasoning support, role compatibility).
+   */
+  capabilities?: ProviderCapabilities;
+  /**
+   * Raw capability overrides explicitly stored on the provider entry.
+   * Preserves the distinction between "explicit false" and resolved defaults.
+   */
+  explicitCapabilities?: ProviderCapabilities;
 }
 
 export interface GenerateResult {
@@ -188,6 +199,7 @@ function synthesizeWireModel(
   modelId: string,
   wire: GenerateOptions['wire'],
   baseUrl: string | undefined,
+  capabilities?: ProviderCapabilities,
 ): PiModel {
   const supportsImageInput = wire === 'openai-codex-responses';
   const api =
@@ -203,7 +215,7 @@ function synthesizeWireModel(
     name: modelId,
     api,
     provider,
-    reasoning: inferReasoning(wire, modelId, baseUrl),
+    reasoning: inferReasoning(wire, modelId, baseUrl, capabilities, provider),
     input: supportsImageInput ? ['text', 'image'] : ['text'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 131072,
@@ -252,9 +264,28 @@ export async function complete(
   };
 
   let piModel = pi.getModel(model.provider, effectiveModelId);
+  if (piModel && opts.wire !== undefined) {
+    const effectiveBaseUrl = opts.baseUrl ?? piModel.baseUrl;
+    piModel = {
+      ...piModel,
+      reasoning: inferReasoning(
+        opts.wire,
+        effectiveModelId,
+        effectiveBaseUrl,
+        opts.explicitCapabilities ?? opts.capabilities,
+        model.provider,
+      ),
+    };
+  }
   if (!piModel) {
     if (opts.wire !== undefined) {
-      piModel = synthesizeWireModel(model.provider, effectiveModelId, opts.wire, opts.baseUrl);
+      piModel = synthesizeWireModel(
+        model.provider,
+        effectiveModelId,
+        opts.wire,
+        opts.baseUrl,
+        opts.explicitCapabilities ?? opts.capabilities,
+      );
     } else if (model.provider === 'openrouter') {
       piModel = synthesizeOpenRouterModel(effectiveModelId);
     } else {
