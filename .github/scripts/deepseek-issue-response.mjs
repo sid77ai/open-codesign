@@ -51,9 +51,12 @@ async function main() {
       repo,
       '--json',
       'number,title,body,labels,author,url,comments',
-    ])
+    ]),
   );
-  const docs = loadRepoDocs(['CLAUDE.md', 'AGENTS.md', 'README.md', 'package.json', 'pnpm-lock.yaml'], 7000);
+  const docs = loadRepoDocs(
+    ['CLAUDE.md', 'AGENTS.md', 'README.md', 'package.json', 'pnpm-lock.yaml'],
+    7000,
+  );
   const searchSnippets = searchRepoSnippets(`${issue.title}\n${issue.body || ''}`, 50);
 
   const userPrompt = [
@@ -81,7 +84,14 @@ async function main() {
 
   const body = ensureBotSignature(String(parsed.body || ''));
   const commentPayload = writeTempJson('deepseek-issue-comment', { body });
-  runGh(['api', `repos/${repo}/issues/${issueNumber}/comments`, '--method', 'POST', '--input', commentPayload]);
+  runGh([
+    'api',
+    `repos/${repo}/issues/${issueNumber}/comments`,
+    '--method',
+    'POST',
+    '--input',
+    commentPayload,
+  ]);
   printUsage('DeepSeek issue response', usage);
 }
 

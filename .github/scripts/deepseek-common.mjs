@@ -1,7 +1,7 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 
 const STOP_WORDS = new Set([
   'about',
@@ -274,18 +274,24 @@ export async function callDeepSeekJson({
 
   const rawText = await response.text();
   if (!response.ok) {
-    throw new Error(`DeepSeek API error ${response.status}: ${truncate(rawText, 1000, 'error body')}`);
+    throw new Error(
+      `DeepSeek API error ${response.status}: ${truncate(rawText, 1000, 'error body')}`,
+    );
   }
 
   const payload = JSON.parse(rawText);
   const content = payload.choices?.[0]?.message?.content;
   if (typeof content !== 'string' || !content.trim()) {
-    throw new Error(`DeepSeek API returned no message content: ${truncate(rawText, 1000, 'response')}`);
+    throw new Error(
+      `DeepSeek API returned no message content: ${truncate(rawText, 1000, 'response')}`,
+    );
   }
 
   const parsed = parseJsonObject(content);
   if (!parsed || typeof parsed !== 'object') {
-    throw new Error(`DeepSeek returned non-JSON content: ${truncate(content, 1000, 'model output')}`);
+    throw new Error(
+      `DeepSeek returned non-JSON content: ${truncate(content, 1000, 'model output')}`,
+    );
   }
 
   return {
@@ -309,7 +315,7 @@ export function ensureBotSignature(body) {
 export function writeTempJson(prefix, value) {
   const tempPath = path.join(
     os.tmpdir(),
-    `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`
+    `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`,
   );
   fs.writeFileSync(tempPath, JSON.stringify(value, null, 2));
   return tempPath;
@@ -346,12 +352,16 @@ export function loadPullRequestFileExcerpts(prNumber, filePaths, maxFiles = 8, m
   const excerpts = [];
   for (const filePath of [...new Set(filePaths)].slice(0, maxFiles)) {
     try {
-      const content = execFileSync('git', ['show', `refs/remotes/pull/${prNumber}/head:${filePath}`], {
-        cwd: process.cwd(),
-        encoding: 'utf8',
-        maxBuffer: 5 * 1024 * 1024,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+      const content = execFileSync(
+        'git',
+        ['show', `refs/remotes/pull/${prNumber}/head:${filePath}`],
+        {
+          cwd: process.cwd(),
+          encoding: 'utf8',
+          maxBuffer: 5 * 1024 * 1024,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        },
+      );
       excerpts.push({
         path: filePath,
         content: truncate(content, maxChars, filePath),

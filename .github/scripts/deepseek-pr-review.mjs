@@ -1,10 +1,10 @@
 import {
   callDeepSeekJson,
   ensureBotSignature,
+  listPullRequestFiles,
   loadEventPayload,
   loadPullRequestFileExcerpts,
   loadRepoDocs,
-  listPullRequestFiles,
   printUsage,
   readTextFileIfExists,
   requireEnv,
@@ -43,7 +43,7 @@ function serializeFiles(files) {
         `additions: ${file.additions}`,
         `deletions: ${file.deletions}`,
         file.patch ? truncate(file.patch, 6000, `${file.filename} patch`) : '[no patch available]',
-      ].join('\n')
+      ].join('\n'),
     )
     .join('\n\n');
 }
@@ -82,19 +82,26 @@ async function main() {
       repo,
       '--json',
       'number,title,body,labels,author,additions,deletions,changedFiles,headRefOid,baseRefName,headRefName,url',
-    ])
+    ]),
   );
   const diff = runGh(['pr', 'diff', prNumber, '-R', repo]);
   const files = listPullRequestFiles(repo, prNumber);
   const docs = loadRepoDocs(
-    ['CLAUDE.md', 'AGENTS.md', 'README.md', '.github/PULL_REQUEST_TEMPLATE.md', 'package.json', 'pnpm-lock.yaml'],
-    7000
+    [
+      'CLAUDE.md',
+      'AGENTS.md',
+      'README.md',
+      '.github/PULL_REQUEST_TEMPLATE.md',
+      'package.json',
+      'pnpm-lock.yaml',
+    ],
+    7000,
   );
   const excerpts = loadPullRequestFileExcerpts(
     prNumber,
     files.map((file) => file.filename),
     8,
-    5000
+    5000,
   );
 
   let followUpContext = 'None.';
@@ -118,7 +125,9 @@ async function main() {
       truncate(review, 8000, 'previous review'),
       'Previous bot review comments:',
       truncate(reviewComments, 8000, 'previous review comments'),
-      compareDiff ? `Compare diff since previous review:\n${truncate(compareDiff, 24000, 'compare diff')}` : '',
+      compareDiff
+        ? `Compare diff since previous review:\n${truncate(compareDiff, 24000, 'compare diff')}`
+        : '',
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -180,7 +189,14 @@ async function main() {
     commit_id: currentHeadSha,
     body,
   });
-  runGh(['api', `repos/${repo}/pulls/${prNumber}/reviews`, '--method', 'POST', '--input', reviewPayload]);
+  runGh([
+    'api',
+    `repos/${repo}/pulls/${prNumber}/reviews`,
+    '--method',
+    'POST',
+    '--input',
+    reviewPayload,
+  ]);
   printUsage('DeepSeek PR review', usage);
 }
 
